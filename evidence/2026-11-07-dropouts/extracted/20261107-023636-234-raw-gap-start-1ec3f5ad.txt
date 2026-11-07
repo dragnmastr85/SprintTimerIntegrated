@@ -1,0 +1,7 @@
+Reason: raw-gap-start
+Save requested: 2026-11-07T02:36:36.2348355-05:00
+Sample time on vision clock: 489016 ms
+Similarity: 0.296415
+Threshold: 0.595
+Capture generation: 23
+Image: actual captured search band, without annotations.

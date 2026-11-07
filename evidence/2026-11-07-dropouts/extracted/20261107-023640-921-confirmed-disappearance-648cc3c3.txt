@@ -1,0 +1,7 @@
+Reason: confirmed-disappearance
+Save requested: 2026-11-07T02:36:40.9218039-05:00
+Sample time on vision clock: 493705 ms
+Similarity: 0.183310
+Threshold: 0.595
+Capture generation: 23
+Image: actual captured search band, without annotations.
