@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -53,6 +53,8 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
+    private const string AppVersion = "0.1.1";
+
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
 
@@ -107,7 +109,7 @@ public sealed partial class InputTest : Form
 
     public InputTest()
     {
-        Text = "Sprint Timer - Icon Integration Test";
+        Text = "Sprint Timer - v" + AppVersion;
         ClientSize = new Size(700, 650);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -192,6 +194,8 @@ public sealed partial class InputTest : Form
         InitializeReminderOverlay();
         InitializeCaptureDiagnostics();
         InitializePersistentSettings();
+        LogVision("Sprint Timer v" + AppVersion +
+            " | x64 | EXE: " + Application.ExecutablePath);
         timer.Interval = 25;
         timer.Tick += PollInput;
         timer.Tick += UpdateReminderOverlay;
