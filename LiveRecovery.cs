@@ -47,7 +47,7 @@ public sealed partial class InputTest
 
         if (source != recoveryLastSource || source == 3)
         {
-            LogVision(
+            if (diagnosticLoggingEnabled) LogVision(
                 "Match stage: " + RecoverySourceName(source) +
                 "; score: " + result[0].ToString("0.000") +
                 "; track: " + (recoveryHasTrack

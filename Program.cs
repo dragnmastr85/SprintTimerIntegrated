@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.2";
+    private const string AppVersion = "0.2.3";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -194,7 +194,8 @@ public sealed partial class InputTest : Form
         InitializeReminderOverlay();
         InitializeCaptureDiagnostics();
         InitializePersistentSettings();
-        LogVision("Sprint Timer v" + AppVersion +
+        InitializeDebugInterface();
+        if (diagnosticLoggingEnabled) LogVision("Sprint Timer v" + AppVersion +
             " | x64 | EXE: " + Application.ExecutablePath);
         timer.Interval = 25;
         timer.Tick += PollInput;
@@ -472,7 +473,7 @@ public sealed partial class InputTest : Form
                 statusColor = Color.DimGray;
             }
 
-            messageLabel.Text = String.Format(
+            if (DebugInterfaceVisible) messageLabel.Text = String.Format(
                 "Stick X: {0:0.00}   Y: {1:0.00}   Neutral: {2}\n" +
                 "Neutral clears sprint. Side/back retains the armed state.",
                 x, y, neutral ? "yes" : "no");
@@ -529,5 +530,226 @@ public sealed partial class InputTest : Form
         {
             MessageBox.Show(ex.ToString(), "Input test failed");
         }
+    }
+}
+
+public sealed partial class InputTest
+{
+    private Form debugWindow;
+    private bool diagnosticLoggingEnabled;
+    private long nextDebugSummaryAt;
+    private long nextDebugCaptureStatusAt;
+    private readonly CheckBox diagnosticLoggingCheck = new CheckBox();
+
+    private bool DebugInterfaceVisible
+    {
+        get
+        {
+            return debugWindow != null &&
+                !debugWindow.IsDisposed &&
+                debugWindow.Visible &&
+                debugWindow.WindowState != FormWindowState.Minimized;
+        }
+    }
+
+    private bool ShouldRefreshDebugSummary()
+    {
+        if (!DebugInterfaceVisible)
+            return false;
+
+        long now = visionClock.ElapsedMilliseconds;
+        if (now < nextDebugSummaryAt)
+            return false;
+
+        nextDebugSummaryAt = now + 250;
+        return true;
+    }
+
+    private bool ShouldRefreshCaptureStatus()
+    {
+        if (!DebugInterfaceVisible)
+            return false;
+
+        long now = visionClock.ElapsedMilliseconds;
+        if (now < nextDebugCaptureStatusAt)
+            return false;
+
+        nextDebugCaptureStatusAt = now + 250;
+        return true;
+    }
+
+    private Control RequireMainControl(string text)
+    {
+        foreach (Control control in Controls)
+        {
+            if (control.Text == text)
+                return control;
+        }
+        throw new InvalidOperationException(
+            "Cannot locate existing UI control: " + text);
+    }
+
+    private void MoveDebugControl(
+        Control control, int x, int y, int width, int height)
+    {
+        debugWindow.Controls.Add(control);
+        control.SetBounds(x, y, width, height);
+    }
+
+    private void LogDebugSnapshot()
+    {
+        if (!diagnosticLoggingEnabled)
+            return;
+
+        if (diagnosticLoggingEnabled) LogVision("Diagnostic logging enabled; earlier events were not collected.");
+        if (diagnosticLoggingEnabled) LogVision("Sprint Timer v" + AppVersion +
+            " | x64 | EXE: " + Application.ExecutablePath);
+        if (diagnosticLoggingEnabled) LogVision(
+            "Configuration: monitor: " + captureMonitor.Text +
+            "; threshold: " + matchThreshold.Value.ToString("0.000") +
+            "; device: " + devices.Text +
+            "; mode: " + modes.Text +
+            "; " + bindingLabel.Text);
+        if (diagnosticLoggingEnabled) LogVision(
+            "Reminder at: " + reminderSeconds.Value.ToString("0.0") +
+            " s (0 = off); overlay: " +
+            (overlayEnabled.Checked ? "on" : "off") +
+            "; X/Y: " + overlayX.Value + "/" + overlayY.Value +
+            "; opacity: " + overlayOpacity.Value + "%.");
+        if (diagnosticLoggingEnabled) LogVision(
+            "Current state: " + stateLabel.Text +
+            "; elapsed: " +
+            ((elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs) /
+                1000.0).ToString("0.000") +
+            " s; track: " +
+            (recoveryHasTrack ? recoveryX + "," + recoveryY : "none") +
+            "; diagnostic images: " +
+            (diagnosticCaptureEnabled ? "on" : "off") + ".");
+    }
+
+    private void InitializeDebugInterface()
+    {
+        // Capture references before reparenting the existing controls.
+        Control monitorLabel = RequireMainControl("Capture monitor");
+        Control thresholdLabel = RequireMainControl("Threshold");
+        Control clear = RequireMainControl("Clear diagnostics");
+        Control copy = RequireMainControl("Copy diagnostics");
+        Control reset = RequireMainControl("Reset");
+        Control captures = RequireMainControl("Open captures");
+        Control confirmMonitor = RequireMainControl("Confirm monitor");
+        Control reminderTitle =
+            RequireMainControl("Reminder at (seconds; 0 = off)");
+        Control xTitle = RequireMainControl("X offset");
+        Control yTitle = RequireMainControl("Y offset");
+        Control opacityTitle = RequireMainControl("Opacity %");
+
+        debugWindow = new Form();
+        debugWindow.Text = "Sprint Timer Debug - v" + AppVersion;
+        debugWindow.ClientSize = new Size(760, 680);
+        debugWindow.FormBorderStyle = FormBorderStyle.FixedDialog;
+        debugWindow.MaximizeBox = false;
+        debugWindow.MinimizeBox = true;
+        debugWindow.StartPosition = FormStartPosition.CenterParent;
+        debugWindow.Font = Font;
+
+        diagnosticLoggingCheck.Text = "Enable diagnostic logging";
+        diagnosticLoggingCheck.SetBounds(12, 12, 270, 25);
+        diagnosticLoggingCheck.Checked = false;
+        diagnosticLoggingCheck.CheckedChanged += delegate
+        {
+            diagnosticLoggingEnabled = diagnosticLoggingCheck.Checked;
+            if (diagnosticLoggingEnabled)
+                LogDebugSnapshot();
+        };
+        debugWindow.Controls.Add(diagnosticLoggingCheck);
+
+        Label loggingNotice = new Label();
+        loggingNotice.Text =
+            "Off at startup. Text stays in memory; use Copy diagnostics to export.";
+        loggingNotice.SetBounds(12, 43, 730, 23);
+        debugWindow.Controls.Add(loggingNotice);
+
+        MoveDebugControl(thresholdLabel, 12, 79, 80, 23);
+        MoveDebugControl(matchThreshold, 95, 76, 95, 26);
+        MoveDebugControl(reset, 215, 75, 125, 28);
+        reset.Text = "Reset session";
+
+        MoveDebugControl(visionSummary, 12, 115, 730, 112);
+        MoveDebugControl(clear, 12, 237, 150, 28);
+        MoveDebugControl(copy, 175, 237, 150, 28);
+        MoveDebugControl(visionLog, 12, 275, 730, 238);
+
+        MoveDebugControl(diagnosticCaptureCheck, 12, 524, 300, 25);
+        MoveDebugControl(captures, 335, 522, 145, 28);
+        MoveDebugControl(diagnosticCaptureStatus, 12, 558, 730, 36);
+        MoveDebugControl(messageLabel, 12, 605, 730, 60);
+
+        debugWindow.FormClosing += delegate(
+            object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                debugWindow.Hide();
+            }
+        };
+
+        FormClosed += delegate
+        {
+            if (debugWindow != null)
+            {
+                debugWindow.Dispose();
+                debugWindow = null;
+            }
+        };
+
+        // The actual controls are retained, preserving settings and handlers.
+        monitorLabel.SetBounds(12, 265, 115, 23);
+        captureMonitor.SetBounds(130, 262, 545, 26);
+
+        reminderTitle.SetBounds(12, 310, 205, 23);
+        reminderSeconds.SetBounds(220, 307, 90, 26);
+        overlayEnabled.SetBounds(335, 308, 160, 25);
+
+        xTitle.SetBounds(12, 350, 60, 23);
+        overlayX.SetBounds(75, 347, 80, 26);
+        yTitle.SetBounds(175, 350, 60, 23);
+        overlayY.SetBounds(238, 347, 80, 26);
+        opacityTitle.SetBounds(340, 350, 75, 23);
+        overlayOpacity.SetBounds(420, 347, 75, 26);
+        overlayNotice.SetBounds(12, 389, 675, 50);
+
+        Label usage = new Label();
+        usage.Text =
+            "Assign sprint, release the input, then focus ARC Raiders.\r\n" +
+            "Switching away clears the timer session. No game inputs are generated.";
+        usage.SetBounds(12, 444, 675, 43);
+        Controls.Add(usage);
+
+        Button debug = new Button();
+        debug.Text = "Debug...";
+        debug.SetBounds(12, 500, 125, 28);
+        debug.Click += delegate
+        {
+            nextDebugSummaryAt = 0;
+            nextDebugCaptureStatusAt = 0;
+            if (!debugWindow.Visible)
+                debugWindow.Show(this);
+            if (debugWindow.WindowState == FormWindowState.Minimized)
+                debugWindow.WindowState = FormWindowState.Normal;
+            debugWindow.Activate();
+        };
+        Controls.Add(debug);
+
+        Label version = new Label();
+        version.Text = "v" + AppVersion + " | x64";
+        version.SetBounds(155, 505, 150, 23);
+        Controls.Add(version);
+
+        // Keep missing-monitor recovery available without opening Debug.
+        confirmMonitor.SetBounds(500, 500, 175, 28);
+
+        Text = "Sprint Timer - v" + AppVersion;
+        ClientSize = new Size(700, 545);
     }
 }

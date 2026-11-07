@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -108,7 +108,7 @@ public sealed partial class InputTest
             timer.Start();
             confirmMonitor.Visible = false;
             ResetVisionSession();
-            LogVision("Capture monitor explicitly confirmed.");
+            if (diagnosticLoggingEnabled) LogVision("Capture monitor explicitly confirmed.");
         };
 
         string path = SettingsFile();
@@ -309,7 +309,7 @@ public sealed partial class InputTest
                     );
                 }
 
-                LogVision("App settings restored from settings.json.");
+                if (diagnosticLoggingEnabled) LogVision("App settings restored from settings.json.");
             }
             catch (Exception ex)
             {
@@ -318,12 +318,12 @@ public sealed partial class InputTest
                     Environment.NewLine +
                     "Check input, capture monitor, threshold and reminder settings."
                 );
-                LogVision("Settings restore error: " + ex.Message);
+                if (diagnosticLoggingEnabled) LogVision("Settings restore error: " + ex.Message);
             }
         }
         else
         {
-            LogVision("No saved app settings; using current defaults.");
+            if (diagnosticLoggingEnabled) LogVision("No saved app settings; using current defaults.");
         }
 
         settingsInitialized = true;

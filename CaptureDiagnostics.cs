@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
@@ -68,6 +68,9 @@ public sealed partial class InputTest
 
         timer.Tick += delegate
         {
+            if (!ShouldRefreshCaptureStatus())
+                return;
+
             string error;
             lock (diagnosticFrameLock)
                 error = diagnosticWriteError;
@@ -147,7 +150,7 @@ public sealed partial class InputTest
         {
             Interlocked.Decrement(ref diagnosticWrites);
             image.Dispose();
-            LogVision("Diagnostic image skipped: save queue full.");
+            if (diagnosticLoggingEnabled) LogVision("Diagnostic image skipped: save queue full.");
             return;
         }
 
@@ -209,11 +212,11 @@ public sealed partial class InputTest
         {
             image.Dispose();
             Interlocked.Decrement(ref diagnosticWrites);
-            LogVision("Diagnostic save could not be queued.");
+            if (diagnosticLoggingEnabled) LogVision("Diagnostic save could not be queued.");
         }
         else
         {
-            LogVision("Diagnostic save queued: " + stem);
+            if (diagnosticLoggingEnabled) LogVision("Diagnostic save queued: " + stem);
         }
     }
 }

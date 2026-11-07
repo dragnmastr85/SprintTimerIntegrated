@@ -131,7 +131,7 @@ public sealed partial class InputTest
             recoveryWideAttempts = 0;
             lastGapMs = -1;
             visionLog.Clear();
-            LogVision(
+            if (diagnosticLoggingEnabled) LogVision(
                 "Diagnostic counters cleared; timer, track, wider cooldown, " +
                 "and confirmation/session state retained."
             );
@@ -167,8 +167,8 @@ public sealed partial class InputTest
 
         visionReady = true;
         ResetVisionSession();
-        LogVision("Reference loaded. Verify the selected capture monitor.");
-        LogVision(
+        if (diagnosticLoggingEnabled) LogVision("Reference loaded. Verify the selected capture monitor.");
+        if (diagnosticLoggingEnabled) LogVision(
             "Background capture enabled; 50 ms target, 300 ms confirmation."
         );
     }
@@ -195,11 +195,14 @@ public sealed partial class InputTest
         elapsed.Reset();
 
         if (visionReady)
-            LogVision("Timer session reset; waiting for initial input or icon.");
+            if (diagnosticLoggingEnabled) LogVision("Timer session reset; waiting for initial input or icon.");
     }
 
     private void LogVision(string text)
     {
+        if (!diagnosticLoggingEnabled)
+            return;
+
         if (suppressFocusResetLog)
             return;
 
@@ -231,14 +234,14 @@ public sealed partial class InputTest
             if (active && !previousEstimate)
             {
                 elapsed.Restart();
-                LogVision("Initial pre-icon input estimate started.");
+                if (diagnosticLoggingEnabled) LogVision("Initial pre-icon input estimate started.");
             }
             else if (!active && previousEstimate)
             {
                 double clearedInitialMs =
                     elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs;
                 elapsed.Reset();
-                LogVision(
+                if (diagnosticLoggingEnabled) LogVision(
                     "Initial pre-icon input estimate cleared; input inactive; " +
                     "timer before clear: " +
                     (clearedInitialMs / 1000.0).ToString("0.000") + " s."
@@ -256,7 +259,7 @@ public sealed partial class InputTest
                 {
                     elapsed.Reset();
                     elapsedCreditMs = 0;
-                    LogVision(
+                    if (diagnosticLoggingEnabled) LogVision(
                         "Fresh sprint estimate cleared; input inactive."
                     );
                 }
@@ -266,7 +269,7 @@ public sealed partial class InputTest
                 elapsedCreditMs = 0;
                 elapsed.Restart();
                 freshSprintReady = false;
-                LogVision(
+                if (diagnosticLoggingEnabled) LogVision(
                     "Fresh sprint after inactive input; estimated timer started."
                 );
             }
@@ -316,7 +319,7 @@ public sealed partial class InputTest
                 {
                     string error = ex.Message;
                     if (captureError != error)
-                        LogVision("CAPTURE ERROR: " + error);
+                        if (diagnosticLoggingEnabled) LogVision("CAPTURE ERROR: " + error);
 
                     captureError = error;
                     ClearRecoveryTracking();
@@ -383,36 +386,39 @@ public sealed partial class InputTest
             ((elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs) / 1000.0)
             .ToString("0.0") + " s";
 
-        string raw = previousRaw.HasValue
-            ? (previousRaw.Value ? "FOUND" : "NOT FOUND") : "UNKNOWN";
-
-        string gap = rawGapSince.HasValue
-            ? (visionClock.ElapsedMilliseconds - rawGapSince.Value) + " ms"
-            : "--";
-
-        visionSummary.Text = String.Format(
-            "Raw: {0}   Confirmed: {1}   Similarity: {2:0.000}   Threshold: {3:0.000}\r\n" +
-            "Raw gaps: {4}   Confirmed disappearances: {5}\r\n" +
-            "Current gap: {6}   Last completed gap: {7}\r\n" +
-            "{8}",
-            raw, iconStable ? "FOUND" : "NOT FOUND",
-            lastScore, matchThreshold.Value,
-            rawGapCount, disappearanceCount, gap,
-            lastGapMs < 0 ? "--" : lastGapMs + " ms",
-            captureError.Length > 0
-                ? captureError
-                : String.Format(
-                    "Target: 50 ms | Processing: {0:0.0} ms | Sample interval: {1} ms | Max: {2} ms",
-                    lastProcessingMs,
-                    lastSampleIntervalMs,
-                    maximumSampleIntervalMs
-                ) + String.Format(
-                    " | Stage: {0} | N/W: {1}/{2} | W attempts: {3}",
-                    RecoverySourceName(recoveryLastSource),
-                    recoveryNarrowCount, recoveryWideCount,
-                    recoveryWideAttempts
-                )
-        );
+        if (ShouldRefreshDebugSummary())
+        {
+            string raw = previousRaw.HasValue
+                ? (previousRaw.Value ? "FOUND" : "NOT FOUND") : "UNKNOWN";
+    
+            string gap = rawGapSince.HasValue
+                ? (visionClock.ElapsedMilliseconds - rawGapSince.Value) + " ms"
+                : "--";
+    
+            visionSummary.Text = String.Format(
+                "Raw: {0}   Confirmed: {1}   Similarity: {2:0.000}   Threshold: {3:0.000}\r\n" +
+                "Raw gaps: {4}   Confirmed disappearances: {5}\r\n" +
+                "Current gap: {6}   Last completed gap: {7}\r\n" +
+                "{8}",
+                raw, iconStable ? "FOUND" : "NOT FOUND",
+                lastScore, matchThreshold.Value,
+                rawGapCount, disappearanceCount, gap,
+                lastGapMs < 0 ? "--" : lastGapMs + " ms",
+                captureError.Length > 0
+                    ? captureError
+                    : String.Format(
+                        "Target: 50 ms | Processing: {0:0.0} ms | Sample interval: {1} ms | Max: {2} ms",
+                        lastProcessingMs,
+                        lastSampleIntervalMs,
+                        maximumSampleIntervalMs
+                    ) + String.Format(
+                        " | Stage: {0} | N/W: {1}/{2} | W attempts: {3}",
+                        RecoverySourceName(recoveryLastSource),
+                        recoveryNarrowCount, recoveryWideCount,
+                        recoveryWideAttempts
+                    )
+            );
+            }
     }
 
     private double[] CaptureAndDetect(
@@ -560,7 +566,7 @@ public sealed partial class InputTest
         {
             rawGapCount++;
             rawGapSince = now;
-            LogVision(
+            if (diagnosticLoggingEnabled) LogVision(
                 "Raw gap #" + rawGapCount + " started. " +
                 "Candidates: " + lastCandidateCount +
                 "; similarity: " + lastScore.ToString("0.000") +
@@ -571,7 +577,7 @@ public sealed partial class InputTest
         {
             lastGapMs = now - rawGapSince.Value;
             rawGapSince = null;
-            LogVision("Raw match returned; gap about " + lastGapMs + " ms.");
+            if (diagnosticLoggingEnabled) LogVision("Raw match returned; gap about " + lastGapMs + " ms.");
         }
         previousRaw = detected;
 
@@ -608,7 +614,7 @@ public sealed partial class InputTest
 
                 if (retainedInitialEstimate)
                 {
-                    LogVision(
+                    if (diagnosticLoggingEnabled) LogVision(
                         "First icon confirmation; estimate already running: yes; " +
                         "retained elapsed: " +
                         (retainedInitialMs / 1000.0).ToString("0.000") + " s."
@@ -616,7 +622,7 @@ public sealed partial class InputTest
                 }
                 else
                 {
-                    LogVision(
+                    if (diagnosticLoggingEnabled) LogVision(
                         "First icon confirmation; estimate already running: no; " +
                         "timer started and credited " +
                         elapsedCreditMs.ToString("0") +
@@ -628,7 +634,7 @@ public sealed partial class InputTest
             {
                 if (elapsed.IsRunning)
                 {
-                    LogVision(
+                    if (diagnosticLoggingEnabled) LogVision(
                         "Icon returned; estimate already running: yes; " +
                         "retained fresh sprint estimate elapsed: " +
                         ((elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs) /
@@ -642,7 +648,7 @@ public sealed partial class InputTest
                         0,
                         visionClock.ElapsedMilliseconds - pendingIconSince
                     );
-                    LogVision(
+                    if (diagnosticLoggingEnabled) LogVision(
                         "Icon returned; estimate already running: no; timer credited " +
                         elapsedCreditMs.ToString("0") +
                         " ms since first matching sample."
@@ -662,7 +668,7 @@ public sealed partial class InputTest
                 elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs;
             elapsedCreditMs = 0;
             elapsed.Reset();
-            LogVision(
+            if (diagnosticLoggingEnabled) LogVision(
                 "Confirmed disappearance #" + disappearanceCount +
                 "; timer before reset: " +
                 (timerBeforeResetMs / 1000.0).ToString("0.000") +

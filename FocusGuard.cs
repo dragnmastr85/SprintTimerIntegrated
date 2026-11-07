@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -81,7 +81,7 @@ public sealed partial class InputTest
         stateLabel.Text = "WAITING FOR ARC FOCUS";
         stateLabel.ForeColor = Color.DimGray;
         counterLabel.Text = "0.0 s";
-        visionSummary.Text =
+        if (ShouldRefreshDebugSummary()) visionSummary.Text =
             "Gameplay monitoring inactive: ARC Raiders is not foreground.\r\n" +
             "Input and icon detection are disabled until the game is focused.\r\n" +
             "The previous timer session was cleared; no off-focus gap is counted.";
