@@ -399,3 +399,24 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# SprintTimerIntegrated local artifacts
+
+# Historical patch backups; retain locally for baseline reconciliation
+/backup-*/
+
+# Generated screen captures and diagnostic sidecars
+/capture-diagnostics/
+
+# Local migration reports; review separately before publishing
+/migration-handoff/
+
+# Locally compiled executable and packaged copy
+/SprintTimerIntegrated.exe
+/SprintTimerIntegrated.zip
+
+# Runtime settings backup; retain settings.json for baseline inspection
+/settings.json.bak
+
+# Accidental nested repository location
+/SprintTimerIntegrated/

@@ -1,0 +1,9 @@
+{
+  "monitor": 1,
+  "band_left": 0.35,
+  "band_right": 0.65,
+  "band_top": 0.850925925925926,
+  "band_bottom": 0.8972222222222223,
+  "icon_height_fraction": 0.02962962962962963,
+  "threshold": 0.7
+}
