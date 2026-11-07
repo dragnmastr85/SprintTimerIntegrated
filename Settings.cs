@@ -135,6 +135,10 @@ public sealed partial class InputTest
 
                 RestoreNumber(data, "threshold", matchThreshold);
                 RestoreNumber(data, "reminder_seconds", reminderSeconds);
+                swiftRank.SelectedIndex = ReadSettingInt(data, "swift_start_rank", 5, 1, 5) - 1;
+                RestoreNumber(data, "warning_lead_seconds", warningLead);
+                reminderMode.SelectedIndex = ReadSettingInt(data, "reminder_mode", 0, 0, 1);
+                RefreshRankReminder();
                 RestoreNumber(data, "overlay_x", overlayX);
                 RestoreNumber(data, "overlay_y", overlayY);
                 RestoreNumber(data, "overlay_opacity", overlayOpacity);
@@ -380,6 +384,9 @@ public sealed partial class InputTest
 
         data["threshold"] = matchThreshold.Value;
         data["reminder_seconds"] = reminderSeconds.Value;
+        data["reminder_mode"] = reminderMode.SelectedIndex;
+        data["swift_start_rank"] = swiftRank.SelectedIndex + 1;
+        data["warning_lead_seconds"] = warningLead.Value;
         data["overlay_enabled"] = overlayEnabled.Checked;
         data["overlay_x"] = overlayX.Value;
         data["overlay_y"] = overlayY.Value;
@@ -412,6 +419,16 @@ public sealed partial class InputTest
 
         if (e.Cancel || !settingsInitialized)
             return;
+
+        if (reminderMode.SelectedIndex == 1 && !RankReminderValid)
+        {
+            e.Cancel = true;
+            MessageBox.Show(this,
+                "Warn before must be shorter than the selected rank estimate. " +
+                "Correct it or select Manual before closing.",
+                "Invalid reminder settings", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
 
         // Do not save an unconfirmed replacement for a missing monitor.
         if (savedMonitorNeedsConfirmation)

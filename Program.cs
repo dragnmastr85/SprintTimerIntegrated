@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.14";
+    private const string AppVersion = "0.2.15";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -192,6 +192,7 @@ public sealed partial class InputTest : Form
 
         InitializeVision();
         InitializeReminderOverlay();
+        InitializeRankReminder();
         InitializeCaptureDiagnostics();
         InitializePersistentSettings();
         InitializeDebugInterface();
@@ -612,7 +613,7 @@ public sealed partial class InputTest
             "; mode: " + modes.Text +
             "; sprint input: " + bindingLabel.Text);
         if (diagnosticLoggingEnabled) LogVision(
-            "Reminder at: " + reminderSeconds.Value.ToString("0.0") +
+            "Effective reminder at: " + EffectiveReminderSeconds.ToString("0.0") +
             " s (0 = off); overlay: " +
             (overlayEnabled.Checked ? "on" : "off") +
             "; X/Y: " + overlayX.Value + "/" + overlayY.Value +
@@ -877,10 +878,21 @@ public sealed partial class InputTest
         root.Controls.Add(display);
 
         TableLayoutPanel overlay = UiSection("OVERLAY");
-        reminderTitle.Text = "Reminder at";
+        UiRow(overlay, UiLabel("Reminder"), reminderMode, null);
+        UiRow(overlay, UiLabel("Swift Start"), swiftRank, null);
+        UiRow(overlay, UiLabel("Warn before"),
+            UiFlow(warningLead, UiLabel("seconds")), null);
+        reminderTitle.Text = "Manual at";
         reminderSeconds.Width = 78;
         UiRow(overlay, reminderTitle,
             UiFlow(reminderSeconds, UiLabel("seconds; 0 = off")), null);
+        int reminderSummaryRow = overlay.RowCount++;
+        reminderSummary.AutoSize = true;
+        reminderSummary.MaximumSize = new Size(348, 0);
+        reminderSummary.Margin = new Padding(0, 4, 0, 4);
+        overlay.Controls.Add(reminderSummary, 0, reminderSummaryRow);
+        overlay.SetColumnSpan(reminderSummary, 3);
+        RefreshRankReminder();
 
         xTitle.Text = "X position";
         yTitle.Text = "Y position";
@@ -1139,7 +1151,16 @@ public sealed partial class InputTest
                 bodyFont, boldFont);
 
             HelpHeading(text, "OVERLAY", headingFont);
-            HelpSetting(text, "Reminder at",
+            HelpSetting(text, "Rank-based reminder",
+                "Select your Swift Start rank. Estimated durations for ranks 1-5 are " +
+                "6.1, 7.6, 9.6, 11.1 and 13.6 seconds. These are empirical estimates, " +
+                "not verified game constants. Warn before subtracts your lead from " +
+                "the selected duration; the default lead is 2.0 seconds. The lead " +
+                "must be shorter than the estimated duration. The calculated " +
+                "warning uses the existing session elapsed time, not time since " +
+                "icon acquisition. It never ends or resets the session.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Manual reminder",
                 "Flash the overlay after this many elapsed seconds. Set 0 to disable. " +
                 "The reminder is an advance warning, not confirmation that the " +
                 "benefit has ended. Icon detection still determines when the app " +
@@ -1667,5 +1688,77 @@ internal sealed class MonitorPreviewEdge : Form
             return;
         }
         base.WndProc(ref m);
+    }
+}
+
+public sealed partial class InputTest
+{
+    private readonly ComboBox reminderMode = new ComboBox();
+    private readonly ComboBox swiftRank = new ComboBox();
+    private readonly NumericUpDown warningLead = new NumericUpDown();
+    private readonly Label reminderSummary = new Label();
+    private static readonly decimal[] SwiftDurations =
+        { 6.1M, 7.6M, 9.6M, 11.1M, 13.6M };
+
+    private bool RankReminderValid
+    {
+        get { return swiftRank.SelectedIndex >= 0 &&
+            warningLead.Value < SwiftDurations[swiftRank.SelectedIndex]; }
+    }
+
+    private double EffectiveReminderSeconds
+    {
+        get
+        {
+            if (reminderMode.SelectedIndex != 1)
+                return (double)reminderSeconds.Value;
+            if (!RankReminderValid) return 0;
+            return (double)(SwiftDurations[swiftRank.SelectedIndex] - warningLead.Value);
+        }
+    }
+
+    private void InitializeRankReminder()
+    {
+        reminderMode.DropDownStyle = ComboBoxStyle.DropDownList;
+        reminderMode.Width = 140;
+        reminderMode.Items.AddRange(new object[] { "Manual", "Rank-based" });
+        reminderMode.SelectedIndex = 0;
+        swiftRank.DropDownStyle = ComboBoxStyle.DropDownList;
+        swiftRank.Width = 140;
+        swiftRank.Items.AddRange(new object[]
+            { "Rank 1", "Rank 2", "Rank 3", "Rank 4", "Rank 5" });
+        swiftRank.SelectedIndex = 4;
+        warningLead.Width = 78;
+        warningLead.DecimalPlaces = 1;
+        warningLead.Minimum = 0;
+        warningLead.Maximum = 60;
+        warningLead.Increment = 0.1M;
+        warningLead.Value = 2.0M;
+        reminderMode.SelectedIndexChanged += delegate { RefreshRankReminder(); };
+        swiftRank.SelectedIndexChanged += delegate { RefreshRankReminder(); };
+        warningLead.ValueChanged += delegate { RefreshRankReminder(); };
+        reminderSeconds.ValueChanged += delegate { RefreshRankReminder(); };
+        RefreshRankReminder();
+    }
+
+    private void RefreshRankReminder()
+    {
+        bool ranked = reminderMode.SelectedIndex == 1;
+        swiftRank.Enabled = ranked;
+        warningLead.Enabled = ranked;
+        reminderSeconds.Enabled = !ranked;
+        reminderSummary.ForeColor = ranked && !RankReminderValid
+            ? Color.Firebrick : Color.DimGray;
+        if (ranked && !RankReminderValid)
+            reminderSummary.Text = "Lead must be shorter than the rank estimate. Warning disabled until corrected.";
+        else if (ranked)
+            reminderSummary.Text = String.Format(
+                "Estimate {0:0.0} s - lead {1:0.0} s = warn at {2:0.0} s",
+                SwiftDurations[swiftRank.SelectedIndex], warningLead.Value,
+                EffectiveReminderSeconds);
+        else
+            reminderSummary.Text = reminderSeconds.Value > 0
+                ? "Warn at " + reminderSeconds.Value.ToString("0.0") + " s elapsed"
+                : "Reminder disabled";
     }
 }

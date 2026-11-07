@@ -157,7 +157,7 @@ public sealed partial class InputTest
 
         bool running = elapsed.IsRunning && !capturing;
         bool detectorFailed = captureError.Length > 0;
-        double threshold = (double)reminderSeconds.Value;
+        double threshold = EffectiveReminderSeconds;
 
         // This is display-only. Never write to elapsed or vision state.
         bool remind = running && !detectorFailed &&
@@ -208,7 +208,7 @@ public sealed partial class InputTest
         else if (threshold > 0)
             footer = "Reminder at " + threshold.ToString("0.0") + " s";
         else
-            footer = "Reminder disabled";
+            footer = reminderMode.SelectedIndex == 1 && !RankReminderValid ? "Invalid warning lead - check settings" : "Reminder disabled";
 
         reminderOverlay.SetDisplay(
             seconds, status, footer, accent, bright
