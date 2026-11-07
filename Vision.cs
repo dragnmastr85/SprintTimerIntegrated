@@ -91,7 +91,10 @@ public sealed partial class InputTest
         );
         captureMonitor.SelectedIndexChanged += delegate
         {
-            ResetVisionSession();
+            // Startup restoration keeps its existing reset behavior.
+            // Later, only a committed user selection resets the session.
+            if (!monitorSelectionReady)
+                ResetVisionSession();
         };
         Controls.Add(captureMonitor);
 
@@ -335,7 +338,7 @@ public sealed partial class InputTest
         if (captureTask == null && now >= nextCaptureAt)
         {
             Rectangle bounds =
-                Screen.AllScreens[captureMonitor.SelectedIndex].Bounds;
+                Screen.AllScreens[ActiveCaptureMonitorIndex].Bounds;
 
             double captureThreshold = (double)matchThreshold.Value;
             bool tracked = recoveryHasTrack;

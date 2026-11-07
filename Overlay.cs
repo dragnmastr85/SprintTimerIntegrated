@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -99,7 +99,7 @@ public sealed partial class InputTest
         }
 
         Screen[] screens = Screen.AllScreens;
-        int monitor = captureMonitor.SelectedIndex;
+        int monitor = ActiveCaptureMonitorIndex;
         if (monitor < 0 || monitor >= screens.Length)
         {
             reminderOverlay.Hide();

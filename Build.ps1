@@ -22,7 +22,7 @@ $sourceNames = @(
 )
 $assetNames = @("SDL2.dll", "icon.png", "detector.json", "settings.json")
 $exeName = "SprintTimerIntegrated.exe"
-$installNames = @("Program.cs", "Vision.cs", "LiveRecovery.cs", "CaptureDiagnostics.cs", "Settings.cs", "FocusGuard.cs", "Build.ps1", $exeName)
+$installNames = @("Program.cs", "Vision.cs", "LiveRecovery.cs", "Overlay.cs", "CaptureDiagnostics.cs", "Settings.cs", "FocusGuard.cs", "Build.ps1", $exeName)
 
 function Assert-AppClosed {
     if (Get-Process -Name "SprintTimerIntegrated" -ErrorAction SilentlyContinue) {

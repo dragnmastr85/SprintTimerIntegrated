@@ -298,7 +298,7 @@ public sealed partial class InputTest
                 }
 
                 // Keep the restored overlay within the selected monitor.
-                int monitor = captureMonitor.SelectedIndex;
+                int monitor = ActiveCaptureMonitorIndex;
                 if (monitor >= 0 && monitor < Screen.AllScreens.Length)
                 {
                     Rectangle bounds = Screen.AllScreens[monitor].Bounds;
@@ -368,7 +368,7 @@ public sealed partial class InputTest
         data["binding_button"] = bindingButton;
         data["binding_axis"] = bindingAxis;
 
-        int monitor = captureMonitor.SelectedIndex;
+        int monitor = ActiveCaptureMonitorIndex;
 
         if (monitor >= 0 && monitor < Screen.AllScreens.Length)
         {

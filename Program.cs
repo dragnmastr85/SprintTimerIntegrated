@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.6";
+    private const string AppVersion = "0.2.11";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -195,6 +195,7 @@ public sealed partial class InputTest : Form
         InitializeCaptureDiagnostics();
         InitializePersistentSettings();
         InitializeDebugInterface();
+        InitializeMonitorPlacementDefaults();
         if (diagnosticLoggingEnabled) LogVision("Sprint Timer v" + AppVersion +
             " | x64 | EXE: " + Application.ExecutablePath);
         timer.Interval = 25;
@@ -830,27 +831,6 @@ public sealed partial class InputTest
         title.Controls.Add(UiLabel("v" + AppVersion + " | x64"));
         root.Controls.Add(title);
 
-        stateLabel.AutoSize = false;
-        stateLabel.Height = 34;
-        stateLabel.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-        stateLabel.TextAlign = ContentAlignment.MiddleLeft;
-        stateLabel.Dock = DockStyle.Fill;
-        stateLabel.Margin = new Padding(0, 4, 0, 0);
-        root.Controls.Add(stateLabel);
-
-        counterLabel.AutoSize = false;
-        counterLabel.Height = 27;
-        counterLabel.Font = new Font("Segoe UI", 11);
-        counterLabel.TextAlign = ContentAlignment.MiddleLeft;
-        counterLabel.Dock = DockStyle.Fill;
-        root.Controls.Add(counterLabel);
-
-        Label focusHelp = UiLabel(
-            "Switching away from ARC Raiders clears the timer session.");
-        focusHelp.ForeColor = Color.DimGray;
-        focusHelp.MaximumSize = new Size(348, 0);
-        root.Controls.Add(focusHelp);
-
         TableLayoutPanel input = UiSection("INPUT");
         deviceLabel.Text = "Device";
         devices.Width = 140;
@@ -879,9 +859,7 @@ public sealed partial class InputTest
             if (index >= 0 && index < screens.Length)
             {
                 Screen screen = screens[index];
-                e.Value = screen.DeviceName.Replace(
-                    @"\\.\DISPLAY", "Display ") +
-                    " - " + screen.Bounds.Width + " x " + screen.Bounds.Height;
+                e.Value = PhysicalMonitorDisplayLabel(screen);
             }
         };
         captureMonitor.Refresh();
@@ -927,6 +905,27 @@ public sealed partial class InputTest
         overlayNotice.ForeColor = Color.DimGray;
         overlayNotice.Margin = new Padding(0, 0, 0, 10);
         root.Controls.Add(overlayNotice);
+
+        TableLayoutPanel status = UiSection("STATUS");
+        stateLabel.AutoSize = false;
+        stateLabel.Height = 34;
+        stateLabel.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+        stateLabel.TextAlign = ContentAlignment.MiddleLeft;
+        stateLabel.Dock = DockStyle.Fill;
+        stateLabel.Margin = new Padding(0, 4, 0, 0);
+        status.Controls.Add(stateLabel, 0, 2);
+        status.SetColumnSpan(stateLabel, 3);
+
+        counterLabel.AutoSize = false;
+        counterLabel.Height = 27;
+        counterLabel.Font = new Font("Segoe UI", 11);
+        counterLabel.TextAlign = ContentAlignment.MiddleLeft;
+        counterLabel.Dock = DockStyle.Fill;
+        status.Controls.Add(counterLabel, 0, 3);
+        status.SetColumnSpan(counterLabel, 3);
+
+        status.RowCount = 4;
+        root.Controls.Add(status);
 
         Button debug = new Button();
         debug.Text = "Debug...";
@@ -1146,6 +1145,8 @@ public sealed partial class InputTest
                 bodyFont, boldFont);
             HelpSetting(text, "Position",
                 "X and Y are offsets from the selected monitor's top-left corner. " +
+                "Manually changing monitors resets the overlay to horizontal center " +
+                "and 14 percent down. Saved placement is retained at startup. " +
                 "The overlay hides if it overlaps the detector band.",
                 bodyFont, boldFont);
             HelpSetting(text, "Opacity",
@@ -1214,5 +1215,455 @@ public sealed partial class InputTest
             help.AcceptButton = gotIt;
             help.ShowDialog(this);
         }
+    }
+}
+
+
+public sealed partial class InputTest
+{
+    // Full DEVMODEW layout, including the display branch of its union.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MonitorDisplayMode
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmDeviceName;
+        public ushort dmSpecVersion;
+        public ushort dmDriverVersion;
+        public ushort dmSize;
+        public ushort dmDriverExtra;
+        public uint dmFields;
+        public int dmPositionX;
+        public int dmPositionY;
+        public uint dmDisplayOrientation;
+        public uint dmDisplayFixedOutput;
+        public short dmColor;
+        public short dmDuplex;
+        public short dmYResolution;
+        public short dmTTOption;
+        public short dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmFormName;
+        public ushort dmLogPixels;
+        public uint dmBitsPerPel;
+        public uint dmPelsWidth;
+        public uint dmPelsHeight;
+        public uint dmDisplayFlags;
+        public uint dmDisplayFrequency;
+        public uint dmICMMethod;
+        public uint dmICMIntent;
+        public uint dmMediaType;
+        public uint dmDitherType;
+        public uint dmReserved1;
+        public uint dmReserved2;
+        public uint dmPanningWidth;
+        public uint dmPanningHeight;
+    }
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "EnumDisplaySettingsW",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadMonitorDisplayMode(
+        string deviceName, int modeNumber, ref MonitorDisplayMode mode);
+
+    private static string PhysicalMonitorDisplayLabel(Screen screen)
+    {
+        string name = screen.DeviceName.Replace(@"\\.\DISPLAY", "Display ");
+
+        try
+        {
+            MonitorDisplayMode mode = new MonitorDisplayMode();
+            int size = Marshal.SizeOf(typeof(MonitorDisplayMode));
+            if (size != 220)
+                return name + " - resolution unavailable";
+
+            mode.dmSize = (ushort)size;
+            if (ReadMonitorDisplayMode(screen.DeviceName, -1, ref mode) &&
+                mode.dmPelsWidth > 0 && mode.dmPelsHeight > 0)
+            {
+                return name + " - " +
+                    mode.dmPelsWidth + " x " + mode.dmPelsHeight;
+            }
+        }
+        catch
+        {
+            // Do not mislabel logical bounds as a physical resolution.
+        }
+
+        return name + " - resolution unavailable";
+    }
+
+    private void InitializeMonitorPlacementDefaults()
+    {
+        committedCaptureMonitor = captureMonitor.SelectedIndex;
+        monitorSelectionReady = true;
+
+        monitorPreviewEdges = new MonitorPreviewEdge[] {
+            new MonitorPreviewEdge(), new MonitorPreviewEdge(),
+            new MonitorPreviewEdge(), new MonitorPreviewEdge()
+        };
+        foreach (MonitorPreviewEdge edge in monitorPreviewEdges)
+            edge.PreparePreview();
+
+        monitorPreviewTimer = new Timer();
+        monitorPreviewTimer.Interval = 40;
+        monitorPreviewTimer.Tick += delegate
+        {
+            UpdateMonitorHoverPreview();
+        };
+
+        captureMonitor.DropDown += delegate
+        {
+            monitorPreviewTimer.Start();
+        };
+
+        captureMonitor.DropDownClosed += delegate
+        {
+            StopMonitorHoverPreview();
+
+            // Defer restoration until selection/cancellation notifications
+            // for this dropdown operation have finished.
+            BeginInvoke(new MethodInvoker(delegate
+            {
+                if (!IsDisposed && !captureMonitor.IsDisposed &&
+                    captureMonitor.SelectedIndex != committedCaptureMonitor)
+                    captureMonitor.SelectedIndex = committedCaptureMonitor;
+            }));
+        };
+
+        captureMonitor.SelectionChangeCommitted += delegate
+        {
+            int selected = captureMonitor.SelectedIndex;
+            if (selected < 0 || selected >= Screen.AllScreens.Length)
+                return;
+
+            bool changed = selected != committedCaptureMonitor;
+            committedCaptureMonitor = selected;
+            StopMonitorHoverPreview();
+
+            if (changed)
+            {
+                ResetVisionSession();
+                ApplySelectedMonitorOverlayDefaults();
+            }
+        };
+
+        FormClosed += delegate
+        {
+            if (monitorPreviewTimer != null)
+            {
+                monitorPreviewTimer.Stop();
+                monitorPreviewTimer.Dispose();
+                monitorPreviewTimer = null;
+            }
+
+            if (monitorPreviewEdges != null)
+            {
+                foreach (MonitorPreviewEdge edge in monitorPreviewEdges)
+                    edge.Dispose();
+                monitorPreviewEdges = null;
+            }
+        };
+    }
+
+    private void ApplySelectedMonitorOverlayDefaults()
+    {
+        Screen[] screens = Screen.AllScreens;
+        int index = ActiveCaptureMonitorIndex;
+        if (index < 0 || index >= screens.Length ||
+            reminderOverlay == null || reminderOverlay.IsDisposed)
+            return;
+
+        // Match the existing overlay coordinate system, not the cosmetic
+        // physical-resolution label.
+        Rectangle bounds = screens[index].Bounds;
+        int maxX = Math.Max(0, bounds.Width - reminderOverlay.Width);
+        int maxY = Math.Max(0, bounds.Height - reminderOverlay.Height);
+
+        int x = (int)Math.Round(
+            maxX / 2.0, MidpointRounding.AwayFromZero);
+        int y = (int)Math.Round(
+            bounds.Height * 0.14, MidpointRounding.AwayFromZero);
+        y = Math.Max(0, Math.Min(maxY, y));
+
+        overlayX.Value = Math.Max(
+            overlayX.Minimum, Math.Min(overlayX.Maximum, (decimal)x));
+        overlayY.Value = Math.Max(
+            overlayY.Minimum, Math.Min(overlayY.Maximum, (decimal)y));
+
+        if (diagnosticLoggingEnabled)
+        {
+            LogVision(
+                "Monitor selection committed; overlay defaults applied. " +
+                "Coordinate bounds: " + bounds.Width + " x " + bounds.Height +
+                "; X/Y: " + overlayX.Value + "/" + overlayY.Value + ".");
+        }
+    }
+}
+
+
+public sealed partial class InputTest
+{
+    private bool monitorSelectionReady;
+    private int committedCaptureMonitor = -1;
+    private Timer monitorPreviewTimer;
+    private MonitorPreviewEdge[] monitorPreviewEdges;
+    private Rectangle monitorPreviewBounds = Rectangle.Empty;
+
+    private int ActiveCaptureMonitorIndex
+    {
+        get
+        {
+            return monitorSelectionReady
+                ? committedCaptureMonitor : captureMonitor.SelectedIndex;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorPreviewRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorPreviewComboInfo
+    {
+        public int Size;
+        public MonitorPreviewRect Item;
+        public MonitorPreviewRect Button;
+        public uint ButtonState;
+        public IntPtr Combo;
+        public IntPtr Edit;
+        public IntPtr List;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "GetComboBoxInfo")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PreviewComboInfo(
+        IntPtr combo, ref MonitorPreviewComboInfo info);
+
+    [DllImport("user32.dll", EntryPoint = "GetCursorPos")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PreviewCursorPosition(out Point point);
+
+    [DllImport("user32.dll", EntryPoint = "ScreenToClient")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PreviewScreenToClient(
+        IntPtr window, ref Point point);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern IntPtr PreviewListMessage(
+        IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    private void StopMonitorHoverPreview()
+    {
+        if (monitorPreviewTimer != null)
+            monitorPreviewTimer.Stop();
+        HideMonitorHoverBorder();
+    }
+
+    private void HideMonitorHoverBorder()
+    {
+        if (monitorPreviewEdges != null)
+        {
+            foreach (MonitorPreviewEdge edge in monitorPreviewEdges)
+            {
+                if (!edge.IsDisposed)
+                    edge.HidePreview();
+            }
+        }
+        monitorPreviewBounds = Rectangle.Empty;
+    }
+
+    private void UpdateMonitorHoverPreview()
+    {
+        if (!captureMonitor.DroppedDown ||
+            WindowState == FormWindowState.Minimized)
+        {
+            StopMonitorHoverPreview();
+            return;
+        }
+
+        MonitorPreviewComboInfo info = new MonitorPreviewComboInfo();
+        info.Size = Marshal.SizeOf(typeof(MonitorPreviewComboInfo));
+        Point point;
+
+        if (!PreviewComboInfo(captureMonitor.Handle, ref info) ||
+            info.List == IntPtr.Zero ||
+            !PreviewCursorPosition(out point) ||
+            !PreviewScreenToClient(info.List, ref point))
+        {
+            HideMonitorHoverBorder();
+            return;
+        }
+
+        int packed = unchecked(
+            (point.X & 0xffff) | ((point.Y & 0xffff) << 16));
+        long hit = PreviewListMessage(
+            info.List, 0x01A9, IntPtr.Zero, new IntPtr(packed)).ToInt64();
+
+        // LB_ITEMFROMPOINT: high word is nonzero outside the list.
+        int index = (int)(hit & 0xffff);
+        bool outside = ((hit >> 16) & 0xffff) != 0;
+        Screen[] screens = Screen.AllScreens;
+
+        if (outside || index < 0 || index >= screens.Length ||
+            index >= captureMonitor.Items.Count)
+        {
+            HideMonitorHoverBorder();
+            return;
+        }
+
+        ShowMonitorHoverBorder(screens[index].Bounds);
+    }
+
+    private void ShowMonitorHoverBorder(Rectangle bounds)
+    {
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            HideMonitorHoverBorder();
+            return;
+        }
+
+        if (monitorPreviewEdges == null)
+            return;
+
+        if (monitorPreviewBounds == bounds &&
+            monitorPreviewEdges[0].PreviewVisible)
+            return;
+
+        int thickness = Math.Min(
+            12, Math.Min(bounds.Width / 2, bounds.Height / 2));
+
+        Rectangle[] edges = {
+            new Rectangle(bounds.Left, bounds.Top,
+                bounds.Width, thickness),
+            new Rectangle(bounds.Left, bounds.Bottom - thickness,
+                bounds.Width, thickness),
+            new Rectangle(bounds.Left, bounds.Top + thickness,
+                thickness, Math.Max(1, bounds.Height - thickness * 2)),
+            new Rectangle(bounds.Right - thickness, bounds.Top + thickness,
+                thickness, Math.Max(1, bounds.Height - thickness * 2))
+        };
+
+        for (int i = 0; i < monitorPreviewEdges.Length; i++)
+        {
+            if (!monitorPreviewEdges[i].ShowPreview(edges[i]))
+            {
+                StopMonitorHoverPreview();
+                if (diagnosticLoggingEnabled)
+                    LogVision("Monitor border could not be displayed; preview stopped.");
+                return;
+            }
+        }
+        monitorPreviewBounds = bounds;
+    }
+}
+
+internal sealed class MonitorPreviewEdge : Form
+{
+    internal MonitorPreviewEdge()
+    {
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        AutoScaleMode = AutoScaleMode.None;
+        TopMost = true;
+        BackColor = Color.Yellow;
+        Opacity = 1.0;
+    }
+
+    private bool previewPrepared;
+    private bool previewVisible;
+
+    internal bool PreviewVisible
+    {
+        get { return previewVisible; }
+    }
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PositionPreviewWindow(
+        IntPtr window, IntPtr insertAfter,
+        int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll",
+        EntryPoint = "SetLayeredWindowAttributes", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetPreviewAlpha(
+        IntPtr window, uint colorKey, byte alpha, uint flags);
+
+    internal void PreparePreview()
+    {
+        // Access creates the hidden native handle. No owner or Show call.
+        IntPtr window = Handle;
+        // A layered window needs its alpha initialized before native display.
+        previewPrepared = SetPreviewAlpha(window, 0, 255, 0x00000002);
+    }
+
+    internal bool ShowPreview(Rectangle bounds)
+    {
+        if (IsDisposed || !previewPrepared || !IsHandleCreated)
+            return false;
+
+        // TOPMOST; NOACTIVATE | SHOWWINDOW | NOOWNERZORDER.
+        bool shown = PositionPreviewWindow(
+            Handle, new IntPtr(-1),
+            bounds.X, bounds.Y, bounds.Width, bounds.Height,
+            0x00000010 | 0x00000040 | 0x00000200);
+
+        previewVisible = shown;
+        return shown;
+    }
+
+    internal void HidePreview()
+    {
+        if (!IsDisposed && IsHandleCreated && previewVisible)
+        {
+            // NOSIZE | NOMOVE | NOZORDER | NOACTIVATE | HIDEWINDOW.
+            bool hidden = PositionPreviewWindow(
+                Handle, IntPtr.Zero, 0, 0, 0, 0,
+                0x00000001 | 0x00000002 | 0x00000004 |
+                0x00000010 | 0x00000080);
+            if (hidden)
+                previewVisible = false;
+        }
+    }
+
+    protected override bool ShowWithoutActivation
+    {
+        get { return true; }
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            // LAYERED | TRANSPARENT | NOACTIVATE | TOOLWINDOW
+            cp.ExStyle |= 0x00080000 | 0x00000020 |
+                          0x08000000 | 0x00000080;
+            return cp;
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x0021) // WM_MOUSEACTIVATE
+        {
+            m.Result = new IntPtr(3); // MA_NOACTIVATE
+            return;
+        }
+        if (m.Msg == 0x0084) // WM_NCHITTEST
+        {
+            m.Result = new IntPtr(-1); // HTTRANSPARENT
+            return;
+        }
+        base.WndProc(ref m);
     }
 }
