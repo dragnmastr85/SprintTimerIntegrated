@@ -428,3 +428,9 @@ FodyWeavers.xsd
 /tools/**/results/
 /tools/**/reviews/
 /tools/**/compiler-output.txt
+
+# Local one-off application patch installers
+/Apply-SprintTimer-v*.ps1
+
+# Per-user runtime settings; defaults remain in source
+/settings.json
