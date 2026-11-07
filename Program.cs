@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.1";
+    private const string AppVersion = "0.2.2";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);

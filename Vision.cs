@@ -126,9 +126,15 @@ public sealed partial class InputTest
         {
             rawGapCount = 0;
             disappearanceCount = 0;
+            recoveryNarrowCount = 0;
+            recoveryWideCount = 0;
+            recoveryWideAttempts = 0;
             lastGapMs = -1;
             visionLog.Clear();
-            LogVision("Counters cleared; timer state retained.");
+            LogVision(
+                "Diagnostic counters cleared; timer, track, wider cooldown, " +
+                "and confirmation/session state retained."
+            );
         };
         Controls.Add(clear);
 
@@ -223,9 +229,21 @@ public sealed partial class InputTest
         if (!sessionConfirmed && !waitingForReturn)
         {
             if (active && !previousEstimate)
+            {
                 elapsed.Restart();
+                LogVision("Initial pre-icon input estimate started.");
+            }
             else if (!active && previousEstimate)
+            {
+                double clearedInitialMs =
+                    elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs;
                 elapsed.Reset();
+                LogVision(
+                    "Initial pre-icon input estimate cleared; input inactive; " +
+                    "timer before clear: " +
+                    (clearedInitialMs / 1000.0).ToString("0.000") + " s."
+                );
+            }
         }
         else if (waitingForReturn)
         {
@@ -575,6 +593,10 @@ public sealed partial class InputTest
             {
                 sessionConfirmed = true;
 
+                bool retainedInitialEstimate = elapsed.IsRunning;
+                double retainedInitialMs =
+                    elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs;
+
                 if (!elapsed.IsRunning)
                 {
                     elapsed.Restart();
@@ -584,16 +606,33 @@ public sealed partial class InputTest
                     );
                 }
 
-                LogVision(
-                    "First icon confirmation; retained existing estimate if running."
-                );
+                if (retainedInitialEstimate)
+                {
+                    LogVision(
+                        "First icon confirmation; estimate already running: yes; " +
+                        "retained elapsed: " +
+                        (retainedInitialMs / 1000.0).ToString("0.000") + " s."
+                    );
+                }
+                else
+                {
+                    LogVision(
+                        "First icon confirmation; estimate already running: no; " +
+                        "timer started and credited " +
+                        elapsedCreditMs.ToString("0") +
+                        " ms since first matching sample."
+                    );
+                }
             }
             else
             {
                 if (elapsed.IsRunning)
                 {
                     LogVision(
-                        "Icon returned; retained running fresh sprint estimate."
+                        "Icon returned; estimate already running: yes; " +
+                        "retained fresh sprint estimate elapsed: " +
+                        ((elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs) /
+                            1000.0).ToString("0.000") + " s."
                     );
                 }
                 else
@@ -604,7 +643,7 @@ public sealed partial class InputTest
                         visionClock.ElapsedMilliseconds - pendingIconSince
                     );
                     LogVision(
-                        "Icon returned; timer credited " +
+                        "Icon returned; estimate already running: no; timer credited " +
                         elapsedCreditMs.ToString("0") +
                         " ms since first matching sample."
                     );
@@ -619,11 +658,15 @@ public sealed partial class InputTest
             disappearanceCount++;
             waitingForReturn = true;
             freshSprintReady = !active;
+            double timerBeforeResetMs =
+                elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs;
             elapsedCreditMs = 0;
             elapsed.Reset();
             LogVision(
                 "Confirmed disappearance #" + disappearanceCount +
-                "; timer reset. " +
+                "; timer before reset: " +
+                (timerBeforeResetMs / 1000.0).ToString("0.000") +
+                " s; timer reset. " +
                 (freshSprintReady
                     ? "Input inactive; next fresh sprint may start an estimate."
                     : "Held-input restart blocked; waiting for inactive input.")
