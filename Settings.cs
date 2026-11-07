@@ -127,6 +127,9 @@ public sealed partial class InputTest
                     ReadSettingInt(data, "version", 0, 0, 100) != 1)
                     throw new Exception("Unsupported settings format.");
 
+                quickStartAcknowledged =
+                    ReadSettingBool(data, "quick_start_acknowledged", false);
+
                 modes.SelectedIndex =
                     ReadSettingInt(data, "mode", 0, 0, 1);
 
@@ -286,12 +289,12 @@ public sealed partial class InputTest
 
                 if (binding != null)
                 {
-                    bindingLabel.Text = "Sprint input: " + binding;
+                    bindingLabel.Text = FriendlySprintBinding(binding);
                     stateLabel.Text = "RELEASE TO ARM";
                 }
                 else
                 {
-                    bindingLabel.Text = "No sprint input assigned.";
+                    bindingLabel.Text = "Not assigned";
                 }
 
                 // Keep the restored overlay within the selected monitor.
@@ -353,6 +356,7 @@ public sealed partial class InputTest
             new Dictionary<string, object>();
 
         data["version"] = 1;
+        data["quick_start_acknowledged"] = quickStartAcknowledged;
         data["mode"] = modes.SelectedIndex;
         data["input_kind"] =
             devices.SelectedIndex > 0 ? "controller" : "keyboard";

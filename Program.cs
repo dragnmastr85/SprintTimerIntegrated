@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.3";
+    private const string AppVersion = "0.2.6";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -241,7 +241,7 @@ public sealed partial class InputTest : Form
         bindingButton = -1;
         bindingAxis = -1;
         ResetState();
-        bindingLabel.Text = "No sprint input assigned.";
+        bindingLabel.Text = "Not assigned";
 
         Device device = devices.SelectedItem as Device;
         if (device == null)
@@ -331,7 +331,7 @@ public sealed partial class InputTest : Form
     private void FinishCapture(string name)
     {
         capturing = false;
-        bindingLabel.Text = "Sprint input: " + name;
+        bindingLabel.Text = FriendlySprintBinding(name);
         stateLabel.Text = "RELEASE TO ARM";
         armed = false;
     }
@@ -609,7 +609,7 @@ public sealed partial class InputTest
             "; threshold: " + matchThreshold.Value.ToString("0.000") +
             "; device: " + devices.Text +
             "; mode: " + modes.Text +
-            "; " + bindingLabel.Text);
+            "; sprint input: " + bindingLabel.Text);
         if (diagnosticLoggingEnabled) LogVision(
             "Reminder at: " + reminderSeconds.Value.ToString("0.0") +
             " s (0 = off); overlay: " +
@@ -703,32 +703,234 @@ public sealed partial class InputTest
             }
         };
 
-        // The actual controls are retained, preserving settings and handlers.
-        monitorLabel.SetBounds(12, 265, 115, 23);
-        captureMonitor.SetBounds(130, 262, 545, 26);
+        InitializeCompactInterface(
+            monitorLabel, confirmMonitor, reminderTitle,
+            xTitle, yTitle, opacityTitle);
+    }
+}
 
-        reminderTitle.SetBounds(12, 310, 205, 23);
-        reminderSeconds.SetBounds(220, 307, 90, 26);
-        overlayEnabled.SetBounds(335, 308, 160, 25);
 
-        xTitle.SetBounds(12, 350, 60, 23);
-        overlayX.SetBounds(75, 347, 80, 26);
-        yTitle.SetBounds(175, 350, 60, 23);
-        overlayY.SetBounds(238, 347, 80, 26);
-        opacityTitle.SetBounds(340, 350, 75, 23);
-        overlayOpacity.SetBounds(420, 347, 75, 26);
-        overlayNotice.SetBounds(12, 389, 675, 50);
+public sealed partial class InputTest
+{
+    private bool quickStartAcknowledged;
 
-        Label usage = new Label();
-        usage.Text =
-            "Assign sprint, release the input, then focus ARC Raiders.\r\n" +
-            "Switching away clears the timer session. No game inputs are generated.";
-        usage.SetBounds(12, 444, 675, 43);
-        Controls.Add(usage);
+    private static Label UiLabel(string text)
+    {
+        Label label = new Label();
+        label.Text = text;
+        label.AutoSize = true;
+        label.Anchor = AnchorStyles.Left;
+        label.Margin = new Padding(0, 3, 8, 3);
+        return label;
+    }
+
+    private static FlowLayoutPanel UiFlow(params Control[] controls)
+    {
+        FlowLayoutPanel panel = new FlowLayoutPanel();
+        panel.AutoSize = true;
+        panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        panel.WrapContents = false;
+        panel.Margin = Padding.Empty;
+        panel.Dock = DockStyle.Fill;
+        foreach (Control control in controls)
+        {
+            control.Margin = new Padding(0, 3, 8, 3);
+            panel.Controls.Add(control);
+        }
+        return panel;
+    }
+
+    private static TableLayoutPanel UiSection(string title)
+    {
+        TableLayoutPanel table = new TableLayoutPanel();
+        table.AutoSize = true;
+        table.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        table.Dock = DockStyle.Top;
+        table.ColumnCount = 3;
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
+        table.Margin = new Padding(0, 8, 0, 8);
+        table.Padding = new Padding(0, 4, 0, 4);
+
+        Label heading = UiLabel(title);
+        heading.Font = new Font("Segoe UI", 9, FontStyle.Bold);
+        heading.ForeColor = Color.FromArgb(45, 76, 105);
+        table.Controls.Add(heading, 0, 0);
+        table.SetColumnSpan(heading, 3);
+
+        Panel divider = new Panel();
+        divider.BackColor = Color.FromArgb(215, 221, 228);
+        divider.Dock = DockStyle.Fill;
+        divider.Margin = new Padding(0, 0, 0, 5);
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 6));
+        table.Controls.Add(divider, 0, 1);
+        table.SetColumnSpan(divider, 3);
+        table.RowCount = 2;
+        return table;
+    }
+
+    private static void UiRow(
+        TableLayoutPanel table, Control label, Control value, Control action)
+    {
+        int row = table.RowCount++;
+        label.Anchor = AnchorStyles.Left;
+        label.Margin = new Padding(0, 3, 8, 3);
+        table.Controls.Add(label, 0, row);
+
+        value.Anchor = AnchorStyles.Left;
+        value.Margin = new Padding(0, 2, 8, 2);
+        table.Controls.Add(value, 1, row);
+
+        if (action == null)
+        {
+            table.SetColumnSpan(value, 2);
+        }
+        else
+        {
+            action.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            action.Margin = new Padding(0, 2, 0, 2);
+            action.Height = 28;
+            table.Controls.Add(action, 2, row);
+        }
+    }
+
+    private void InitializeCompactInterface(
+        Control monitorLabel, Control confirmMonitor, Control reminderTitle,
+        Control xTitle, Control yTitle, Control opacityTitle)
+    {
+        Control deviceLabel = RequireMainControl("Input device");
+        Control refresh = RequireMainControl("Refresh");
+        Control assign = RequireMainControl("Assign sprint input");
+
+        SuspendLayout();
+
+        // Remove parent relationships only; retained controls are not disposed.
+        Controls.Clear();
+        BackColor = Color.FromArgb(248, 249, 251);
+        AutoScroll = false;
+        ClientSize = new Size(380, 665);
+        Text = "Sprint Timer - v" + AppVersion;
+
+        TableLayoutPanel root = new TableLayoutPanel();
+        root.ColumnCount = 1;
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.AutoSize = true;
+        root.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        root.Dock = DockStyle.Top;
+        root.Padding = new Padding(16, 14, 16, 14);
+        root.Margin = Padding.Empty;
+        Controls.Add(root);
+
+        FlowLayoutPanel title = UiFlow();
+        Label name = UiLabel("Sprint Timer");
+        name.Font = new Font("Segoe UI", 15, FontStyle.Bold);
+        title.Controls.Add(name);
+        title.Controls.Add(UiLabel("v" + AppVersion + " | x64"));
+        root.Controls.Add(title);
+
+        stateLabel.AutoSize = false;
+        stateLabel.Height = 34;
+        stateLabel.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+        stateLabel.TextAlign = ContentAlignment.MiddleLeft;
+        stateLabel.Dock = DockStyle.Fill;
+        stateLabel.Margin = new Padding(0, 4, 0, 0);
+        root.Controls.Add(stateLabel);
+
+        counterLabel.AutoSize = false;
+        counterLabel.Height = 27;
+        counterLabel.Font = new Font("Segoe UI", 11);
+        counterLabel.TextAlign = ContentAlignment.MiddleLeft;
+        counterLabel.Dock = DockStyle.Fill;
+        root.Controls.Add(counterLabel);
+
+        Label focusHelp = UiLabel(
+            "Switching away from ARC Raiders clears the timer session.");
+        focusHelp.ForeColor = Color.DimGray;
+        focusHelp.MaximumSize = new Size(348, 0);
+        root.Controls.Add(focusHelp);
+
+        TableLayoutPanel input = UiSection("INPUT");
+        deviceLabel.Text = "Device";
+        devices.Width = 140;
+        devices.DropDownWidth = 320;
+        UiRow(input, deviceLabel, devices, refresh);
+        assign.Text = "Assign...";
+        bindingLabel.AutoSize = false;
+        bindingLabel.Height = 36;
+        bindingLabel.Width = 156;
+        bindingLabel.TextAlign = ContentAlignment.MiddleLeft;
+        UiRow(input, UiLabel("Sprint input"), bindingLabel, assign);
+        modes.Width = 110;
+        UiRow(input, UiLabel("Mode"), UiFlow(modes), null);
+        root.Controls.Add(input);
+
+        TableLayoutPanel display = UiSection("DISPLAY");
+        monitorLabel.Text = "Game monitor";
+        captureMonitor.Width = 200;
+        captureMonitor.DropDownWidth = 340;
+        captureMonitor.FormattingEnabled = true;
+        captureMonitor.Format += delegate(
+            object sender, ListControlConvertEventArgs e)
+        {
+            int index = captureMonitor.Items.IndexOf(e.ListItem);
+            Screen[] screens = Screen.AllScreens;
+            if (index >= 0 && index < screens.Length)
+            {
+                Screen screen = screens[index];
+                e.Value = screen.DeviceName.Replace(
+                    @"\\.\DISPLAY", "Display ") +
+                    " - " + screen.Bounds.Width + " x " + screen.Bounds.Height;
+            }
+        };
+        captureMonitor.Refresh();
+        UiRow(display, monitorLabel, captureMonitor, null);
+
+        int confirmRow = display.RowCount++;
+        confirmMonitor.Width = 170;
+        confirmMonitor.Height = 28;
+        confirmMonitor.Margin = new Padding(0, 4, 0, 4);
+        display.Controls.Add(confirmMonitor, 1, confirmRow);
+        display.SetColumnSpan(confirmMonitor, 2);
+
+        overlayEnabled.AutoSize = true;
+        UiRow(display, UiLabel("Overlay"), overlayEnabled, null);
+        root.Controls.Add(display);
+
+        TableLayoutPanel overlay = UiSection("OVERLAY");
+        reminderTitle.Text = "Reminder at";
+        reminderSeconds.Width = 78;
+        UiRow(overlay, reminderTitle,
+            UiFlow(reminderSeconds, UiLabel("seconds; 0 = off")), null);
+
+        xTitle.Text = "X position";
+        yTitle.Text = "Y position";
+        xTitle.AutoSize = true;
+        yTitle.AutoSize = true;
+        overlayX.Width = 78;
+        overlayY.Width = 78;
+        UiRow(overlay, xTitle,
+            UiFlow(overlayX, UiLabel("pixels")), null);
+        UiRow(overlay, yTitle,
+            UiFlow(overlayY, UiLabel("pixels")), null);
+
+        opacityTitle.Text = "Opacity";
+        overlayOpacity.Width = 78;
+        UiRow(overlay, opacityTitle,
+            UiFlow(overlayOpacity, UiLabel("%")), null);
+        root.Controls.Add(overlay);
+
+        overlayNotice.AutoSize = true;
+        overlayNotice.MaximumSize = new Size(348, 0);
+        overlayNotice.Dock = DockStyle.Fill;
+        overlayNotice.ForeColor = Color.DimGray;
+        overlayNotice.Margin = new Padding(0, 0, 0, 10);
+        root.Controls.Add(overlayNotice);
 
         Button debug = new Button();
         debug.Text = "Debug...";
-        debug.SetBounds(12, 500, 125, 28);
+        debug.Size = new Size(88, 29);
         debug.Click += delegate
         {
             nextDebugSummaryAt = 0;
@@ -739,17 +941,278 @@ public sealed partial class InputTest
                 debugWindow.WindowState = FormWindowState.Normal;
             debugWindow.Activate();
         };
-        Controls.Add(debug);
 
-        Label version = new Label();
-        version.Text = "v" + AppVersion + " | x64";
-        version.SetBounds(155, 505, 150, 23);
-        Controls.Add(version);
+        Button help = new Button();
+        help.Text = "Help...";
+        help.Size = new Size(88, 29);
+        help.Click += delegate { ShowQuickStart(); };
 
-        // Keep missing-monitor recovery available without opening Debug.
-        confirmMonitor.SetBounds(500, 500, 175, 28);
+        Button minimize = new Button();
+        minimize.Text = "Minimize";
+        minimize.Size = new Size(96, 29);
+        minimize.Click += delegate
+        {
+            WindowState = FormWindowState.Minimized;
+        };
 
-        Text = "Sprint Timer - v" + AppVersion;
-        ClientSize = new Size(700, 545);
+        FlowLayoutPanel footer = UiFlow(help, debug, minimize);
+        footer.Margin = new Padding(0, 6, 0, 0);
+        root.Controls.Add(footer);
+
+        Shown += delegate
+        {
+            FitCompactWindow(root);
+            if (!quickStartAcknowledged)
+                BeginInvoke(new MethodInvoker(delegate { ShowQuickStart(); }));
+        };
+
+        ResumeLayout(true);
+        FitCompactWindow(root);
+    }
+
+    private void PersistQuickStartAcknowledgement()
+    {
+        string path = SettingsFile();
+        System.Collections.Generic.Dictionary<string, object> data;
+
+        if (System.IO.File.Exists(path))
+        {
+            data = new System.Web.Script.Serialization.JavaScriptSerializer()
+                .Deserialize<System.Collections.Generic.Dictionary<string, object>>(
+                    System.IO.File.ReadAllText(path));
+            if (data == null ||
+                ReadSettingInt(data, "version", 0, 0, 100) != 1)
+                throw new InvalidOperationException(
+                    "Cannot update an unsupported settings file.");
+        }
+        else
+        {
+            // Establish the existing settings format using the existing saver.
+            SavePersistentSettings();
+            data = new System.Web.Script.Serialization.JavaScriptSerializer()
+                .Deserialize<System.Collections.Generic.Dictionary<string, object>>(
+                    System.IO.File.ReadAllText(path));
+        }
+
+        // Preserve existing monitor/input settings, even if a monitor is missing.
+        data["quick_start_acknowledged"] = true;
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            System.IO.File.WriteAllText(
+                temporary,
+                new System.Web.Script.Serialization.JavaScriptSerializer()
+                    .Serialize(data));
+            System.IO.File.Replace(temporary, path, path + ".bak");
+        }
+        finally
+        {
+            if (System.IO.File.Exists(temporary))
+                System.IO.File.Delete(temporary);
+        }
+    }
+
+    private static string FriendlySprintBinding(string name)
+    {
+        switch (name)
+        {
+            case "LShiftKey": return "Left Shift";
+            case "RShiftKey": return "Right Shift";
+            case "ShiftKey": return "Shift";
+            case "LControlKey": return "Left Ctrl";
+            case "RControlKey": return "Right Ctrl";
+            case "ControlKey": return "Ctrl";
+            case "LMenu": return "Left Alt";
+            case "RMenu": return "Right Alt";
+            case "Menu": return "Alt";
+            case "Space": return "Space";
+            case "Capital": return "Caps Lock";
+            case "Return": return "Enter";
+            case "Prior": return "Page Up";
+            case "Next": return "Page Down";
+            case "Back": return "Backspace";
+            default: return name;
+        }
+    }
+
+    private void FitCompactWindow(TableLayoutPanel root)
+    {
+        // Fit the settings content instead of hiding it behind a scrollbar.
+        root.Width = ClientSize.Width;
+        root.PerformLayout();
+        int height = root.GetPreferredSize(
+            new Size(ClientSize.Width, 0)).Height;
+        ClientSize = new Size(ClientSize.Width, height + 4);
+        PerformLayout();
+    }
+
+    private static void HelpHeading(
+        RichTextBox text, string heading, Font headingFont)
+    {
+        text.SelectionStart = text.TextLength;
+        text.SelectionFont = headingFont;
+        text.SelectionColor = Color.FromArgb(45, 76, 105);
+        text.AppendText(heading + "\r\n");
+    }
+
+    private static void HelpSetting(
+        RichTextBox text, string name, string explanation,
+        Font bodyFont, Font boldFont)
+    {
+        text.SelectionStart = text.TextLength;
+        text.SelectionFont = boldFont;
+        text.SelectionColor = Color.FromArgb(30, 34, 39);
+        text.AppendText(name + "\r\n");
+        text.SelectionFont = bodyFont;
+        text.SelectionColor = Color.FromArgb(60, 65, 72);
+        text.AppendText(explanation + "\r\n\r\n");
+    }
+
+    private void ShowQuickStart()
+    {
+        using (Font bodyFont = new Font("Segoe UI", 10))
+        using (Font boldFont = new Font("Segoe UI", 10, FontStyle.Bold))
+        using (Font headingFont = new Font("Segoe UI", 12, FontStyle.Bold))
+        using (Form help = new Form())
+        {
+            help.Text = "Sprint Timer - Quick Start";
+            help.Font = bodyFont;
+            help.BackColor = Color.White;
+            help.ClientSize = new Size(580, 630);
+            help.FormBorderStyle = FormBorderStyle.FixedDialog;
+            help.MaximizeBox = false;
+            help.MinimizeBox = false;
+            help.StartPosition = FormStartPosition.CenterParent;
+            help.ShowInTaskbar = false;
+
+            TableLayoutPanel layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.Padding = new Padding(20);
+            layout.ColumnCount = 1;
+            layout.RowCount = 3;
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+            help.Controls.Add(layout);
+
+            Label intro = new Label();
+            intro.Text =
+                "Set up once, then minimize\r\n" +
+                "Use Help whenever you need a reminder about a setting.";
+            intro.Font = headingFont;
+            intro.ForeColor = Color.FromArgb(35, 45, 55);
+            intro.Dock = DockStyle.Fill;
+            layout.Controls.Add(intro, 0, 0);
+
+            RichTextBox text = new RichTextBox();
+            text.Font = bodyFont;
+            text.ReadOnly = true;
+            text.DetectUrls = false;
+            text.BorderStyle = BorderStyle.None;
+            text.BackColor = Color.White;
+            text.Dock = DockStyle.Fill;
+            text.ScrollBars = RichTextBoxScrollBars.Vertical;
+            text.TabStop = false;
+            text.WordWrap = true;
+            layout.Controls.Add(text, 0, 1);
+
+            HelpHeading(text, "INPUT", headingFont);
+            HelpSetting(text, "Device and Refresh",
+                "Choose your keyboard or controller. Refresh rescans connected devices.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Sprint input and Assign",
+                "Click Assign, press your sprint key or controller button, then release it.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Hold or Toggle",
+                "Match your in-game sprint mode. Controller Toggle also observes " +
+                "left-stick direction. Returning the stick to neutral clears its " +
+                "remembered sprint state.",
+                bodyFont, boldFont);
+
+            HelpHeading(text, "DISPLAY", headingFont);
+            HelpSetting(text, "Game monitor",
+                "Select the display showing ARC Raiders. The app does not " +
+                "automatically choose the game monitor.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Show overlay",
+                "Show or hide the timer display. Hiding it does not disable monitoring.",
+                bodyFont, boldFont);
+
+            HelpHeading(text, "OVERLAY", headingFont);
+            HelpSetting(text, "Reminder at",
+                "Flash the overlay after this many elapsed seconds. Set 0 to disable. " +
+                "The reminder does not determine when the benefit ends.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Position",
+                "X and Y are offsets from the selected monitor's top-left corner. " +
+                "The overlay hides if it overlaps the detector band.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Opacity",
+                "Adjust how transparent the overlay appears.",
+                bodyFont, boldFont);
+
+            HelpHeading(text, "HELP, DEBUG, AND MINIMIZE", headingFont);
+            HelpSetting(text, "Help",
+                "Reopen this guide at any time.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Debug",
+                "Recognition settings, session reset, counters, and troubleshooting. " +
+                "Text logging and diagnostic-image capture are separate. Both start off.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Minimize and Close",
+                "Minimize keeps monitoring and the overlay running. Closing the main " +
+                "window saves settings and exits.",
+                bodyFont, boldFont);
+
+            HelpHeading(text, "HOW MONITORING WORKS", headingFont);
+            HelpSetting(text, "The icon decides; the timer advises",
+                "Sprint input can start an estimate before the ability icon appears. " +
+                "Confirmed icon detection then controls benefit timing.",
+                bodyFont, boldFont);
+            HelpSetting(text, "ARC Raiders must be foreground",
+                "Switching away from the game clears the current timer session. " +
+                "Opening the app's Help or Debug windows also takes focus away.",
+                bodyFont, boldFont);
+
+            HelpHeading(text, "ANTI-CHEAT LIMITATION", headingFont);
+            HelpSetting(text, "Approval has not been established",
+                "The app observes screen and input only and does not generate game " +
+                "input. That is not a guarantee of anti-cheat approval or ban safety.",
+                bodyFont, boldFont);
+
+            text.Select(0, 0);
+            text.ScrollToCaret();
+
+            Button gotIt = new Button();
+            gotIt.Text = "Got it";
+            gotIt.Size = new Size(100, 30);
+            gotIt.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            gotIt.Click += delegate
+            {
+                try
+                {
+                    if (!quickStartAcknowledged)
+                    {
+                        PersistQuickStartAcknowledgement();
+                        quickStartAcknowledged = true;
+                    }
+                    help.DialogResult = DialogResult.OK;
+                    help.Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        help,
+                        "Could not save Quick Start acknowledgement:\r\n" +
+                        ex.Message + "\r\n\r\nYou can close this guide with X.",
+                        "Settings save failed",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            };
+            layout.Controls.Add(gotIt, 0, 2);
+            help.AcceptButton = gotIt;
+            help.ShowDialog(this);
+        }
     }
 }
