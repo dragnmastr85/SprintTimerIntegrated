@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.15";
+    private const string AppVersion = "0.2.16";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -894,6 +894,8 @@ public sealed partial class InputTest
         overlay.SetColumnSpan(reminderSummary, 3);
         RefreshRankReminder();
 
+        UiRow(overlay, UiLabel("Timer text"), showElapsedSeconds, null);
+
         xTitle.Text = "X position";
         yTitle.Text = "Y position";
         xTitle.AutoSize = true;
@@ -1165,6 +1167,17 @@ public sealed partial class InputTest
                 "The reminder is an advance warning, not confirmation that the " +
                 "benefit has ended. Icon detection still determines when the app " +
                 "considers the benefit active or ended.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Progress bar and elapsed seconds",
+                "The bar fills against the selected Swift Start rank estimate in both " +
+                "reminder modes. Green means progressing, orange means warning, and " +
+                "steady red means confirmed icon disappearance. Reaching full scale " +
+                "alone never means the ability ended. The red bar and final elapsed " +
+                "value remain until a fresh timer starts or the session is reset. " +
+                "A dashed outline means the running time is still estimated. A capture " +
+                "error shows an empty muted bar and -- instead of declaring an end. " +
+                "Show elapsed seconds places the timer centered below the bar. " +
+                "Hiding the text removes its reserved space.",
                 bodyFont, boldFont);
             HelpSetting(text, "Position",
                 "X and Y are offsets from the selected monitor's top-left corner. " +
@@ -1744,7 +1757,7 @@ public sealed partial class InputTest
     private void RefreshRankReminder()
     {
         bool ranked = reminderMode.SelectedIndex == 1;
-        swiftRank.Enabled = ranked;
+        swiftRank.Enabled = true; // Rank also supplies the progress-bar scale in Manual mode.
         warningLead.Enabled = ranked;
         reminderSeconds.Enabled = !ranked;
         reminderSummary.ForeColor = ranked && !RankReminderValid

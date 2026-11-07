@@ -178,6 +178,7 @@ public sealed partial class InputTest
 
     private void ResetVisionSession()
     {
+        ClearOverlayProgress();
         captureGeneration++;
         ClearRecoveryTracking();
         elapsedCreditMs = 0;
@@ -669,6 +670,7 @@ public sealed partial class InputTest
             freshSprintReady = !active;
             double timerBeforeResetMs =
                 elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs;
+            RetainOverlayEnd(timerBeforeResetMs / 1000.0);
             elapsedCreditMs = 0;
             elapsed.Reset();
             if (diagnosticLoggingEnabled) LogVision(

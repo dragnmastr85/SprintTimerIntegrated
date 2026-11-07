@@ -139,6 +139,8 @@ public sealed partial class InputTest
                 RestoreNumber(data, "warning_lead_seconds", warningLead);
                 reminderMode.SelectedIndex = ReadSettingInt(data, "reminder_mode", 0, 0, 1);
                 RefreshRankReminder();
+                showElapsedSeconds.Checked = ReadSettingBool(data, "overlay_show_seconds", true);
+                reminderOverlay.ConfigureSeconds(showElapsedSeconds.Checked);
                 RestoreNumber(data, "overlay_x", overlayX);
                 RestoreNumber(data, "overlay_y", overlayY);
                 RestoreNumber(data, "overlay_opacity", overlayOpacity);
@@ -387,6 +389,7 @@ public sealed partial class InputTest
         data["reminder_mode"] = reminderMode.SelectedIndex;
         data["swift_start_rank"] = swiftRank.SelectedIndex + 1;
         data["warning_lead_seconds"] = warningLead.Value;
+        data["overlay_show_seconds"] = showElapsedSeconds.Checked;
         data["overlay_enabled"] = overlayEnabled.Checked;
         data["overlay_x"] = overlayX.Value;
         data["overlay_y"] = overlayY.Value;
