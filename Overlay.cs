@@ -70,8 +70,7 @@ public sealed partial class InputTest
 
         overlayNotice.SetBounds(12, 722, 675, 58);
         overlayNotice.Text =
-            "Position is relative to the selected capture monitor.\r\n" +
-            "Reminder only; icon confirmation still controls benefit timing.";
+            "Position is relative to the selected capture monitor.";
         Controls.Add(overlayNotice);
 
         reminderOverlay = new ReminderOverlay();
@@ -144,8 +143,7 @@ public sealed partial class InputTest
         }
 
         overlayNotice.Text =
-            "Position is relative to the selected capture monitor.\r\n" +
-            "Reminder only; icon confirmation still controls benefit timing.";
+            "Position is relative to the selected capture monitor.";
 
         if (reminderOverlay.Bounds != overlayBounds)
             reminderOverlay.Bounds = overlayBounds;

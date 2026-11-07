@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.11";
+    private const string AppVersion = "0.2.14";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -834,7 +834,7 @@ public sealed partial class InputTest
         TableLayoutPanel input = UiSection("INPUT");
         deviceLabel.Text = "Device";
         devices.Width = 140;
-        devices.DropDownWidth = 320;
+        devices.DropDownWidth = 220;
         UiRow(input, deviceLabel, devices, refresh);
         assign.Text = "Assign...";
         bindingLabel.AutoSize = false;
@@ -842,8 +842,8 @@ public sealed partial class InputTest
         bindingLabel.Width = 156;
         bindingLabel.TextAlign = ContentAlignment.MiddleLeft;
         UiRow(input, UiLabel("Sprint input"), bindingLabel, assign);
-        modes.Width = 110;
-        UiRow(input, UiLabel("Mode"), UiFlow(modes), null);
+        modes.Width = 140;
+        UiRow(input, UiLabel("Mode"), modes, null);
         root.Controls.Add(input);
 
         TableLayoutPanel display = UiSection("DISPLAY");
@@ -873,7 +873,7 @@ public sealed partial class InputTest
         display.SetColumnSpan(confirmMonitor, 2);
 
         overlayEnabled.AutoSize = true;
-        UiRow(display, UiLabel("Overlay"), overlayEnabled, null);
+        UiRow(display, UiLabel("Visibility"), overlayEnabled, null);
         root.Controls.Add(display);
 
         TableLayoutPanel overlay = UiSection("OVERLAY");
@@ -1141,7 +1141,9 @@ public sealed partial class InputTest
             HelpHeading(text, "OVERLAY", headingFont);
             HelpSetting(text, "Reminder at",
                 "Flash the overlay after this many elapsed seconds. Set 0 to disable. " +
-                "The reminder does not determine when the benefit ends.",
+                "The reminder is an advance warning, not confirmation that the " +
+                "benefit has ended. Icon detection still determines when the app " +
+                "considers the benefit active or ended.",
                 bodyFont, boldFont);
             HelpSetting(text, "Position",
                 "X and Y are offsets from the selected monitor's top-left corner. " +
