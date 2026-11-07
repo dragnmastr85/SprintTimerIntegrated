@@ -17,11 +17,12 @@ $sourceNames = @(
     "CaptureDiagnostics.cs",
     "Overlay.cs",
     "Settings.cs",
-    "FocusGuard.cs"
+    "FocusGuard.cs",
+    "LiveRecovery.cs"
 )
 $assetNames = @("SDL2.dll", "icon.png", "detector.json", "settings.json")
 $exeName = "SprintTimerIntegrated.exe"
-$installNames = @("Program.cs", "Build.ps1", $exeName)
+$installNames = @("Program.cs", "Vision.cs", "LiveRecovery.cs", "Build.ps1", $exeName)
 
 function Assert-AppClosed {
     if (Get-Process -Name "SprintTimerIntegrated" -ErrorAction SilentlyContinue) {
@@ -324,7 +325,7 @@ Write-Host "Modified:      $($item.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
 Write-Host "Bytes:         $($item.Length)"
 Write-Host "SHA256:        $hash"
 Write-Host "Backup:        $backup"
-Write-Host "Settings, detector, focus and overlay behavior were not patched."
+Write-Host "Build installed. Runtime behavior is determined by the source; settings and assets were retained."
 
 Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 

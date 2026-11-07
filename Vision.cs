@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -170,6 +170,7 @@ public sealed partial class InputTest
     private void ResetVisionSession()
     {
         captureGeneration++;
+        ClearRecoveryTracking();
         elapsedCreditMs = 0;
         lastSampleAt = -1;
         lastSampleIntervalMs = 0;
@@ -269,6 +270,7 @@ public sealed partial class InputTest
                 // Ignore a result captured before a session/settings reset.
                 if (taskGeneration == captureGeneration)
                 {
+                    AcceptRecoveryResult(result);
                     lastScore = result[0];
                     lastCandidateCount = (int)result[3];
                     lastProcessingMs = result[1];
@@ -299,6 +301,7 @@ public sealed partial class InputTest
                         LogVision("CAPTURE ERROR: " + error);
 
                     captureError = error;
+                    ClearRecoveryTracking();
                     iconPending = null;
                     previousRaw = null;
                     rawGapSince = null;
@@ -313,12 +316,22 @@ public sealed partial class InputTest
             Rectangle bounds =
                 Screen.AllScreens[captureMonitor.SelectedIndex].Bounds;
 
+            double captureThreshold = (double)matchThreshold.Value;
+            bool tracked = recoveryHasTrack;
+            int trackedX = recoveryX;
+            int trackedY = recoveryY;
+            long nextWide = recoveryNextWideAt;
+
             taskGeneration = captureGeneration;
             nextCaptureAt = now + 50;
 
             captureTask =
                 System.Threading.Tasks.Task.Factory.StartNew<double[]>(
-                    delegate { return CaptureAndDetect(bounds); }
+                    delegate {
+                        return CaptureAndDetect(
+                            bounds, captureThreshold,
+                            tracked, trackedX, trackedY, nextWide);
+                    }
                 );
         }
 
@@ -375,11 +388,18 @@ public sealed partial class InputTest
                     lastProcessingMs,
                     lastSampleIntervalMs,
                     maximumSampleIntervalMs
+                ) + String.Format(
+                    " | Stage: {0} | N/W: {1}/{2} | W attempts: {3}",
+                    RecoverySourceName(recoveryLastSource),
+                    recoveryNarrowCount, recoveryWideCount,
+                    recoveryWideAttempts
                 )
         );
     }
 
-    private double[] CaptureAndDetect(Rectangle bounds)
+    private double[] CaptureAndDetect(
+        Rectangle bounds, double threshold,
+        bool hasTrack, int trackX, int trackY, long nextWideAt)
     {
         Stopwatch processing = Stopwatch.StartNew();
 
@@ -405,6 +425,7 @@ public sealed partial class InputTest
                 );
             }
 
+            long sampleAt = visionClock.ElapsedMilliseconds;
             byte[] pixels = ReadPixels(frame);
             bool[] yellow = new bool[width * height];
 
@@ -422,6 +443,7 @@ public sealed partial class InputTest
             int maximum = (int)(expected * 1.5);
             double best = 0;
             int acceptedCandidates = 0;
+            Rectangle bestBox = Rectangle.Empty;
 
             foreach (Rectangle box in Components(yellow, width, height))
             {
@@ -435,15 +457,77 @@ public sealed partial class InputTest
                 double[] candidate = MakeSymbol(
                     pixels, width, box.X, box.Y, box.Width, box.Height
                 );
-                best = Math.Max(best, SymbolSimilarity(referenceSymbol, candidate));
+                double score = SymbolSimilarity(referenceSymbol, candidate);
+                if (score > best)
+                {
+                    best = score;
+                    bestBox = box;
+                }
+            }
+
+            int source = 0;
+            bool wideAttempted = false;
+            Rectangle acceptedBox = Rectangle.Empty;
+
+            if (best >= threshold && !bestBox.IsEmpty)
+            {
+                source = 1;
+                acceptedBox = bestBox;
+            }
+            else if (hasTrack)
+            {
+                int[] sizes = {
+                    (int)Math.Round(expected * 0.95),
+                    (int)Math.Round(expected),
+                    (int)Math.Round(expected * 1.05)
+                };
+                Seed seed = new Seed("last_accepted", trackX, trackY, true);
+                int evaluations;
+                Hit narrow = LocalSearch(
+                    pixels, width, height, referenceSymbol,
+                    seed, sizes, out evaluations);
+                best = Math.Max(best, narrow.Score);
+
+                if (narrow.Score >= threshold)
+                {
+                    source = 2;
+                    acceptedBox = narrow.Box;
+                }
+                else if (sampleAt >= nextWideAt)
+                {
+                    wideAttempted = true;
+                    nextWideAt = sampleAt + 200;
+                    Hit wide = WideSearch(
+                        pixels, width, height, referenceSymbol,
+                        seed, sizes, out evaluations);
+                    best = Math.Max(best, wide.Score);
+                    if (wide.Score >= threshold)
+                    {
+                        source = 3;
+                        acceptedBox = wide.Box;
+                    }
+                }
+            }
+
+            if (source != 0)
+            {
+                hasTrack = true;
+                trackX = acceptedBox.X;
+                trackY = acceptedBox.Y;
             }
 
             RememberDiagnosticFrame(frame, best);
             return new double[] {
                 best,
                 processing.Elapsed.TotalMilliseconds,
-                visionClock.ElapsedMilliseconds,
-                acceptedCandidates
+                sampleAt,
+                acceptedCandidates,
+                hasTrack ? 1 : 0,
+                trackX,
+                trackY,
+                nextWideAt,
+                source,
+                wideAttempted ? 1 : 0
             };
         }
     }

@@ -420,3 +420,11 @@ FodyWeavers.xsd
 
 # Accidental nested repository location
 /SprintTimerIntegrated/
+
+# Generated offline experiment artifacts; retain source and scripts
+/tools/**/*.exe
+/tools/**/*.pdb
+/tools/**/inputs/
+/tools/**/results/
+/tools/**/reviews/
+/tools/**/compiler-output.txt
