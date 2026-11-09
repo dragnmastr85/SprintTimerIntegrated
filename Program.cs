@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.22";
+    private const string AppVersion = "0.2.23";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -1184,23 +1184,21 @@ public sealed partial class InputTest
                 "resets timing while the icon remains confirmed visible. Show elapsed " +
                 "seconds places the timer below the bar.",
                 bodyFont, boldFont);
-            HelpSetting(text, "Estimate deadline and overlay fading",
+            HelpSetting(text, "Estimate deadline and overlay visibility",
                 "An input-only estimate has nine seconds to obtain icon confirmation. " +
                 "On timeout it clears without an exhaustion signal; input must become " +
-                "inactive before another input estimate can start. Detection continues. " +
-                "Confirmed timing is not limited by this deadline. Initial reveal requires " +
-                "both icon confirmation and five seconds since the visibility episode began. " +
-                "Back-to-back episodes preserve that reveal-delay history, but unconfirmed " +
-                                "initial estimates remain invisible. During chaining, the already-visible " +
-                "bar shell remains visible with zero estimated fill until confirmation. " +
-                "A white glow marks confirmed return only, not first activation or input. " +
-                "Fades take about a quarter second. A qualified " +
-                "post-expiry grace/exhaustion state can keep the bar visible without an icon. " +
-                "Release, capture error, assignment, and session reset cancel exhaustion. " +
-                "Controller Toggle uses forward-stick movement for presentation activity. " +
-                "Debug provides an Always show bar UI override and session-only sound " +
-                "mute, volume, and preview controls. Cue logs record playback requests, " +
-                "not measured audible onset.",
+                "inactive before another estimate can start. Detection continues. " +
+                "Confirmed timing is not limited by this deadline. A confirmed visible " +
+                "icon reveals the bar immediately, with no five-second reveal gate. " +
+                "Initial unconfirmed estimates remain hidden. After a bar has been " +
+                "revealed, its shell remains visible across short release/repress gaps " +
+                "and chained estimates; unconfirmed fill stays zero. Five seconds " +
+                "without input activity or a confirmed icon starts the idle fade. " +
+                "A fresh eligible retrigger input flashes white immediately. This is " +
+                "provisional feedback, not proof of a successful refresh or preservation " +
+                "of another ability. Icon return does not flash white again. Input " +
+                "does not reset an icon-confirmed timer. Debug provides an Always show " +
+                "override and session-only audio and exhaustion-grace controls.",
                 bodyFont, boldFont);
             HelpSetting(text, "Position",
                 "X and Y are offsets from the selected monitor's top-left corner. " +

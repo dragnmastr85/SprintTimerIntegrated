@@ -310,6 +310,9 @@ public sealed partial class InputTest
                 );
             }
         }
+        // Presentation-only edge acknowledgment. Do not reset a confirmed timer.
+        if (active && !previousEstimate && !estimatePolicy.Blocked)
+            AcknowledgeOverlayRetriggerInput();
         previousEstimate = active;
 
         long now = visionClock.ElapsedMilliseconds;
@@ -695,13 +698,13 @@ public sealed partial class InputTest
                     );
                 }
             }
-            // A refresh glow acknowledges confirmed return, not an input edge.
+            // Confirmed return accepts timing; white feedback belongs to input only.
             // First-ever confirmation has waitingForReturn == false.
             if (waitingForReturn)
             {
                 StopExhaustionSound();
                 overlayCues.ConfirmReturn(visionClock.ElapsedMilliseconds);
-                LogOverlayCue("Confirmed icon return; white refresh glow started.");
+                LogOverlayCue("Confirmed icon return; provisional instance accepted, no duplicate glow.");
             }
             estimatePolicy.Confirm();
             waitingForReturn = false;

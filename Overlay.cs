@@ -170,6 +170,16 @@ public sealed partial class InputTest
         overlayEnded = false;
     }
 
+    private void AcknowledgeOverlayRetriggerInput()
+    {
+        long now = visionClock.ElapsedMilliseconds;
+        if (!sessionConfirmed || captureError.Length != 0 || capturing ||
+            !overlayVisibility.CanAcknowledgeRetrigger(now)) return;
+        StopExhaustionSound();
+        overlayCues.AcknowledgeInput(now);
+        LogOverlayCue("Fresh retrigger input; provisional white glow (not benefit confirmation).");
+    }
+
     private void AbandonOverlayEstimate()
     {
         overlayEnded = false;
@@ -321,7 +331,7 @@ public sealed partial class InputTest
             (overlayCues.PendingExhaustion || overlayCues.ExhaustedActive);
         bool unconfirmedEstimate = running && !confirmedActivity;
         double fadeFraction = overlayVisibility.Step(presentationNow,
-            presentationSprint, running || postExpiry, confirmedActivity || postExpiry,
+            presentationSprint, running || postExpiry, confirmedActivity, postExpiry,
             alwaysShowOverlayCheck.Checked);
 
         reminderOverlay.ConfigureSeconds(showElapsedSeconds.Checked);
@@ -578,7 +588,6 @@ internal sealed class ReminderOverlay : Form
 
 internal sealed class SprintOverlayVisibilityPolicy
 {
-    internal const long RevealDelayMs = 5000;
     internal const long InactiveDelayMs = 5000;
     internal const double FadeMs = 250.0;
     internal long StartedAt = -1;
@@ -596,49 +605,55 @@ internal sealed class SprintOverlayVisibilityPolicy
         Alpha = 0;
     }
 
+    internal bool CanAcknowledgeRetrigger(long now)
+    {
+        return Eligible && SessionOpen && PreviouslyRevealed &&
+            LastActiveAt >= 0 && now - LastActiveAt < InactiveDelayMs;
+    }
+
     internal void Begin(long now)
     {
         if (!SessionOpen)
         {
-            StartedAt = LastTickAt = now;
+            StartedAt = now;
             PreviouslyRevealed = false;
             Alpha = 0;
         }
         LastActiveAt = now;
-        SessionOpen = Eligible = true;
+        Eligible = SessionOpen = true;
     }
 
     internal void Abandon() { Eligible = false; }
 
     internal double Step(long now, bool inputActive, bool hasDisplay,
-        bool confirmedActive, bool forceVisible)
+        bool confirmedActive, bool postExpiry, bool forceVisible)
     {
         long delta = LastTickAt < 0 ? 0 : Math.Max(0, now - LastTickAt);
         LastTickAt = now;
-        if (SessionOpen && (inputActive || confirmedActive)) LastActiveAt = now;
+        if (confirmedActive)
+        {
+            if (!SessionOpen) StartedAt = now;
+            Eligible = SessionOpen = PreviouslyRevealed = true;
+            LastActiveAt = now;
+        }
+        else if (SessionOpen && (inputActive || postExpiry)) LastActiveAt = now;
+
         bool recent = LastActiveAt >= 0 && now - LastActiveAt < InactiveDelayMs;
-
-        // Only a confirmed episode may establish visibility. Chained estimates
-        // preserve the already-revealed shell until the visibility session closes.
-        bool reveal = forceVisible || (Eligible && hasDisplay &&
-            (confirmedActive || PreviouslyRevealed) &&
-            StartedAt >= 0 && now - StartedAt >= RevealDelayMs && recent);
-        if (reveal && confirmedActive && !forceVisible) PreviouslyRevealed = true;
-
-        double step = delta / FadeMs;
-        Alpha = reveal ? Math.Min(1, Alpha + step)
-            : Math.Max(0, Alpha - step);
+        // Shell continuity does not depend on timer-running or exhaustion state.
+        bool reveal = confirmedActive || postExpiry ||
+            (Eligible && SessionOpen && PreviouslyRevealed && recent);
+        if (confirmedActive) Alpha = 1;
+        else Alpha = reveal ? Math.Min(1, Alpha + delta / FadeMs)
+            : Math.Max(0, Alpha - delta / FadeMs);
 
         if (SessionOpen && !recent && Alpha <= 0)
         {
             SessionOpen = Eligible = PreviouslyRevealed = false;
             StartedAt = -1;
         }
-
         return forceVisible ? 1 : Alpha;
     }
 }
-
 internal sealed class SprintOverlayCuePolicy
 {
     internal long GraceMs = 300;
@@ -662,6 +677,13 @@ internal sealed class SprintOverlayCuePolicy
     }
 
     internal void ConfirmReturn(long now)
+    {
+        // Confirmation cancels exhaustion, but never duplicates an input glow.
+        PendingExhaustion = ExhaustedActive = ReturnDeferred = false;
+        ExpiryAt = EndedAt = -1;
+    }
+
+    internal void AcknowledgeInput(long now)
     {
         Reset();
         WhiteSince = now;
