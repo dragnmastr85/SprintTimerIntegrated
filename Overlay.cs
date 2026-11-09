@@ -16,9 +16,49 @@ public sealed partial class InputTest
     private readonly CheckBox alwaysShowOverlayCheck = new CheckBox();
     private readonly CheckBox exhaustionSoundCheck = new CheckBox();
     private readonly NumericUpDown exhaustionSoundVolume = new NumericUpDown();
+    private readonly NumericUpDown exhaustionGraceMs = new NumericUpDown();
     private readonly SprintOverlayCuePolicy overlayCues = new SprintOverlayCuePolicy();
     private System.Media.SoundPlayer exhaustionPlayer;
     private System.IO.MemoryStream exhaustionStream;
+
+    private void LogOverlayCue(string text)
+    {
+        if (diagnosticLoggingEnabled)
+            LogVision("Overlay cue @" + visionClock.ElapsedMilliseconds + " ms: " + text);
+    }
+
+    private void PrepareExhaustionSound()
+    {
+        DisposeExhaustionSound();
+        if (exhaustionSoundVolume.Value <= 0) return;
+        try
+        {
+            exhaustionStream = new System.IO.MemoryStream(
+                ExhaustionChimeWave.Create((int)exhaustionSoundVolume.Value), false);
+            exhaustionPlayer = new System.Media.SoundPlayer(exhaustionStream);
+            exhaustionPlayer.Load();
+        }
+        catch (Exception ex)
+        {
+            DisposeExhaustionSound();
+            LogOverlayCue("Audio preparation failed: " + ex.Message);
+        }
+    }
+
+    private void DisposeExhaustionSound()
+    {
+        if (exhaustionPlayer != null)
+        {
+            exhaustionPlayer.Stop();
+            exhaustionPlayer.Dispose();
+            exhaustionPlayer = null;
+        }
+        if (exhaustionStream != null)
+        {
+            exhaustionStream.Dispose();
+            exhaustionStream = null;
+        }
+    }
 
     private bool ReadOverlaySprintActivity()
     {
@@ -37,40 +77,32 @@ public sealed partial class InputTest
 
     private void StopExhaustionSound()
     {
-        if (exhaustionPlayer != null)
-        {
-            exhaustionPlayer.Stop();
-            exhaustionPlayer.Dispose();
-            exhaustionPlayer = null;
-        }
-        if (exhaustionStream != null)
-        {
-            exhaustionStream.Dispose();
-            exhaustionStream = null;
-        }
+        if (exhaustionPlayer != null) exhaustionPlayer.Stop();
     }
-
     private void PlayExhaustionSound(bool preview)
     {
         if ((!preview && !exhaustionSoundCheck.Checked) || exhaustionSoundVolume.Value <= 0)
             return;
+        if (exhaustionPlayer == null)
+        {
+            LogOverlayCue("Playback skipped: prepared audio unavailable.");
+            if (preview) MessageBox.Show(debugWindow, "Prepared audio is unavailable. Change volume to retry.",
+                "Sound preview unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         try
         {
-            StopExhaustionSound();
-            exhaustionStream = new System.IO.MemoryStream(
-                ExhaustionChimeWave.Create((int)exhaustionSoundVolume.Value), false);
-            exhaustionPlayer = new System.Media.SoundPlayer(exhaustionStream);
-            exhaustionPlayer.Load();
+            LogOverlayCue("Playback requested" + (preview ? " (preview)." : "."));
             exhaustionPlayer.Play();
+            LogOverlayCue("Playback call returned; audible onset is not measured.");
         }
         catch (Exception ex)
         {
-            if (diagnosticLoggingEnabled) LogVision("Exhaustion sound unavailable: " + ex.Message);
+            LogOverlayCue("Playback failed: " + ex.Message);
             if (preview) MessageBox.Show(debugWindow, ex.Message,
                 "Sound preview unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
-
     private void InitializeOverlayDebugControls()
     {
         alwaysShowOverlayCheck.Text = "Always show bar UI";
@@ -105,7 +137,24 @@ public sealed partial class InputTest
         notice.Text = "Always-show and audio controls are session-only. Preview ignores mute; volume 0 stays silent.";
         notice.SetBounds(12, 718, 730, 28);
         debugWindow.Controls.Add(notice);
-        FormClosed += delegate { StopExhaustionSound(); };
+        debugWindow.ClientSize = new Size(debugWindow.ClientSize.Width, 810);
+        Label graceLabel = new Label();
+        graceLabel.Text = "Exhaustion grace (ms)";
+        graceLabel.SetBounds(12, 760, 165, 24);
+        debugWindow.Controls.Add(graceLabel);
+        exhaustionGraceMs.Minimum = 0;
+        exhaustionGraceMs.Maximum = 2000;
+        exhaustionGraceMs.Increment = 50;
+        exhaustionGraceMs.Value = 300;
+        exhaustionGraceMs.SetBounds(180, 757, 85, 26);
+        debugWindow.Controls.Add(exhaustionGraceMs);
+        Label graceNotice = new Label();
+        graceNotice.Text = "Session-only; applies to the next confirmed end.";
+        graceNotice.SetBounds(280, 760, 450, 24);
+        debugWindow.Controls.Add(graceNotice);
+        exhaustionSoundVolume.ValueChanged += delegate { PrepareExhaustionSound(); };
+        PrepareExhaustionSound();
+        FormClosed += delegate { DisposeExhaustionSound(); };
     }
 
     private readonly SprintOverlayVisibilityPolicy overlayVisibility =
@@ -114,6 +163,9 @@ public sealed partial class InputTest
     private void BeginOverlayEpisode(long firstSampleOrInputAt)
     {
         overlayVisibility.Begin(firstSampleOrInputAt);
+        if (overlayCues.PendingExhaustion || overlayCues.ExhaustedActive)
+            LogOverlayCue("Previous exhaustion cancelled by new episode.");
+        StopExhaustionSound();
         overlayCues.Begin(visionClock.ElapsedMilliseconds);
         overlayEnded = false;
     }
@@ -124,6 +176,8 @@ public sealed partial class InputTest
         overlayFinalSeconds = 0;
         overlayFinalDuration = 0;
         overlayVisibility.Abandon();
+        StopExhaustionSound();
+        LogOverlayCue("Unconfirmed estimate abandoned; presentation cleared.");
         overlayCues.Reset();
     }
 
@@ -156,7 +210,13 @@ public sealed partial class InputTest
         overlayFinalSeconds = Math.Max(0, seconds);
         overlayFinalDuration = OverlayRankDuration;
         overlayEnded = true;
+        StopExhaustionSound();
+        overlayCues.GraceMs = (long)exhaustionGraceMs.Value;
         overlayCues.End(visionClock.ElapsedMilliseconds, seconds, overlayFinalDuration);
+        LogOverlayCue("Confirmed end; elapsed=" + seconds.ToString("0.000") +
+            " s; qualified=" + overlayCues.PendingExhaustion +
+            "; grace deadline=" + (overlayCues.PendingExhaustion
+                ? (overlayCues.ExpiryAt + overlayCues.GraceMs).ToString() : "none") + " ms.");
     }
 
     private void InitializeReminderOverlay()
@@ -235,13 +295,35 @@ public sealed partial class InputTest
         bool presentationSprint = ReadOverlaySprintActivity();
         bool confirmedActivity = sessionConfirmed && iconStable && captureError.Length == 0;
 
+        bool failed = captureError.Length > 0;
+        bool focused = lastArcFocus.GetValueOrDefault(false);
+        bool cueWasOpen = overlayCues.PendingExhaustion || overlayCues.ExhaustedActive;
+        bool cueAllowed = focused && !failed && !capturing;
+        bool returnPending = iconPending.HasValue && iconPending.Value && !iconStable;
+        if (overlayCues.PendingExhaustion && returnPending != overlayCues.ReturnDeferred)
+            LogOverlayCue(returnPending ? "Exhaustion deferred: icon return pending."
+                : "Pending icon return ended; exhaustion grace eligibility resumes.");
         bool playChime;
-        overlayCues.UpdateExhaustion(presentationNow, presentationSprint, out playChime);
-        if (playChime) PlayExhaustionSound(false);
+        overlayCues.UpdateExhaustion(presentationNow,
+            presentationSprint && cueAllowed, returnPending, out playChime);
+        if (cueWasOpen && !overlayCues.PendingExhaustion && !overlayCues.ExhaustedActive)
+        {
+            StopExhaustionSound();
+            LogOverlayCue("Exhaustion cancelled: inactive input, focus, assignment, or capture error.");
+        }
+        if (playChime)
+        {
+            LogOverlayCue("Exhaustion activated; red pulse starts now.");
+            PlayExhaustionSound(false);
+        }
 
+        bool postExpiry = overlayEnded && !running && cueAllowed && presentationSprint &&
+            (overlayCues.PendingExhaustion || overlayCues.ExhaustedActive);
+        bool unconfirmedEstimate = running && !confirmedActivity;
         double fadeFraction = overlayVisibility.Step(presentationNow,
-            presentationSprint, running || overlayEnded, confirmedActivity,
+            presentationSprint, running || postExpiry, confirmedActivity || postExpiry,
             alwaysShowOverlayCheck.Checked);
+
         reminderOverlay.ConfigureSeconds(showElapsedSeconds.Checked);
         if (!lastArcFocus.GetValueOrDefault(false))
         {
@@ -287,7 +369,6 @@ public sealed partial class InputTest
         if (Math.Abs(reminderOverlay.Opacity - opacity) > 0.001)
             reminderOverlay.Opacity = opacity;
 
-        bool failed = captureError.Length > 0;
         bool ended = overlayEnded && !capturing &&
             overlayCues.ShowEnded(presentationSprint, running, failed);
         double seconds = SprintOverlayCuePolicy.DisplaySeconds(
@@ -297,8 +378,11 @@ public sealed partial class InputTest
         double threshold = EffectiveReminderSeconds;
         bool warning = running && !failed && threshold > 0 && seconds >= threshold;
         bool bright = warning && (visionClock.ElapsedMilliseconds / 400) % 2 == 0;
-        reminderOverlay.SetProgress(seconds, duration, threshold,
-            running, sessionConfirmed && iconStable, ended, failed, warning, bright);
+        // Retain the actual rendered fill and color through grace and exhaustion.
+        reminderOverlay.SetHoldProgress(postExpiry);
+        reminderOverlay.SetProgress(unconfirmedEstimate ? 0 : seconds, duration, threshold,
+            running && !unconfirmedEstimate, sessionConfirmed && iconStable,
+            ended, failed, warning && !unconfirmedEstimate, bright && !unconfirmedEstimate);
         reminderOverlay.SetBorderCue(overlayCues.White(presentationNow, failed),
             overlayCues.Red(presentationNow, presentationSprint, running, failed));
         if (fadeFraction <= 0)
@@ -325,6 +409,9 @@ internal sealed class ReminderOverlay : Form
     private string renderKey = "";
     private int whiteBorder;
     private int redBorder;
+    private bool holdProgress;
+
+    internal void SetHoldProgress(bool hold) { holdProgress = hold; }
 
     internal void SetBorderCue(double white, double red)
     {
@@ -379,6 +466,7 @@ internal sealed class ReminderOverlay : Form
     internal void SetProgress(double seconds, double duration, double threshold,
         bool running, bool confirmed, bool ended, bool error, bool warning, bool bright)
     {
+        if (holdProgress && !error) return;
         int pixels = error || (!running && !ended) ? 0 :
             (int)Math.Round(200 * Math.Max(0, Math.Min(1, seconds / duration)));
         int tick = threshold > 0 && threshold < duration
@@ -428,7 +516,12 @@ internal sealed class ReminderOverlay : Form
                 GraphicsState clip = g.Save();
                 g.SetClip(track);
                 using (GraphicsPath fill = Capsule(new RectangleF(2, 2, fillPixels, 18)))
-                using (Brush brush = new SolidBrush(fillColor)) g.FillPath(brush, fill);
+                using (Brush brush = new SolidBrush(redBorder > 0
+                    ? Color.FromArgb(
+                        (fillColor.R * (255 - redBorder) + 255 * redBorder) / 255,
+                        (fillColor.G * (255 - redBorder) + 65 * redBorder) / 255,
+                        (fillColor.B * (255 - redBorder) + 76 * redBorder) / 255)
+                    : fillColor)) g.FillPath(brush, fill);
                 g.Restore(clip);
             }
             if (!failed && (whiteBorder > 0 || redBorder > 0))
@@ -493,12 +586,13 @@ internal sealed class SprintOverlayVisibilityPolicy
     internal long LastTickAt = -1;
     internal bool Eligible;
     internal bool SessionOpen;
+    internal bool PreviouslyRevealed;
     internal double Alpha;
 
     internal void Reset()
     {
         StartedAt = LastActiveAt = LastTickAt = -1;
-        Eligible = SessionOpen = false;
+        Eligible = SessionOpen = PreviouslyRevealed = false;
         Alpha = 0;
     }
 
@@ -507,6 +601,7 @@ internal sealed class SprintOverlayVisibilityPolicy
         if (!SessionOpen)
         {
             StartedAt = LastTickAt = now;
+            PreviouslyRevealed = false;
             Alpha = 0;
         }
         LastActiveAt = now;
@@ -523,9 +618,12 @@ internal sealed class SprintOverlayVisibilityPolicy
         if (SessionOpen && (inputActive || confirmedActive)) LastActiveAt = now;
         bool recent = LastActiveAt >= 0 && now - LastActiveAt < InactiveDelayMs;
 
-        // Estimates stay 100% invisible! Only reveals when confirmedActive is true (or Debug override).
-        bool reveal = (forceVisible) || (Eligible && hasDisplay && confirmedActive &&
+        // Only a confirmed episode may establish visibility. Chained estimates
+        // preserve the already-revealed shell until the visibility session closes.
+        bool reveal = forceVisible || (Eligible && hasDisplay &&
+            (confirmedActive || PreviouslyRevealed) &&
             StartedAt >= 0 && now - StartedAt >= RevealDelayMs && recent);
+        if (reveal && confirmedActive && !forceVisible) PreviouslyRevealed = true;
 
         double step = delta / FadeMs;
         Alpha = reveal ? Math.Min(1, Alpha + step)
@@ -533,7 +631,7 @@ internal sealed class SprintOverlayVisibilityPolicy
 
         if (SessionOpen && !recent && Alpha <= 0)
         {
-            SessionOpen = Eligible = false;
+            SessionOpen = Eligible = PreviouslyRevealed = false;
             StartedAt = -1;
         }
 
@@ -543,7 +641,8 @@ internal sealed class SprintOverlayVisibilityPolicy
 
 internal sealed class SprintOverlayCuePolicy
 {
-    internal const long RetriggerGraceMs = 750;
+    internal long GraceMs = 300;
+    internal bool ReturnDeferred;
     internal bool PendingExhaustion;
     internal long ExpiryAt = -1;
     internal bool ExhaustedActive;
@@ -552,54 +651,50 @@ internal sealed class SprintOverlayCuePolicy
 
     internal void Reset()
     {
-        PendingExhaustion = ExhaustedActive = false;
+        PendingExhaustion = ExhaustedActive = ReturnDeferred = false;
         ExpiryAt = WhiteSince = EndedAt = -1;
     }
 
     internal void Begin(long now)
     {
-        PendingExhaustion = false;
-        ExhaustedActive = false;
-        ExpiryAt = -1;
-        EndedAt = -1;
+        Reset();
+        // Input estimates and first activations do not acknowledge a refresh.
+    }
+
+    internal void ConfirmReturn(long now)
+    {
+        Reset();
         WhiteSince = now;
     }
 
     internal void End(long now, double elapsedSeconds, double fullDuration)
     {
-        WhiteSince = -1;
-        bool qualified = elapsedSeconds >= (fullDuration - 0.60);
-        if (qualified)
+        Reset();
+        if (elapsedSeconds >= fullDuration - 0.60)
         {
             PendingExhaustion = true;
             ExpiryAt = now;
-            EndedAt = now;
-        }
-        else
-        {
-            PendingExhaustion = false;
-            ExhaustedActive = false;
-            ExpiryAt = -1;
-            EndedAt = -1;
         }
     }
 
-    internal bool UpdateExhaustion(long now, bool sprinting, out bool playChime)
+    internal bool UpdateExhaustion(long now, bool sprinting, bool returnPending, out bool playChime)
     {
         playChime = false;
-        if (PendingExhaustion)
+        if (!sprinting)
         {
-            if (now - ExpiryAt >= RetriggerGraceMs)
-            {
-                PendingExhaustion = false;
-                if (sprinting)
-                {
-                    ExhaustedActive = true;
-                    playChime = true;
-                }
-            }
+            PendingExhaustion = ExhaustedActive = ReturnDeferred = false;
+            ExpiryAt = EndedAt = -1;
+            return false;
         }
-        return ExhaustedActive && sprinting;
+        ReturnDeferred = PendingExhaustion && returnPending;
+        if (PendingExhaustion && !ReturnDeferred && now - ExpiryAt >= GraceMs)
+        {
+            PendingExhaustion = false;
+            ExhaustedActive = true;
+            EndedAt = now;
+            playChime = true;
+        }
+        return ExhaustedActive;
     }
 
     internal bool ShowEnded(bool sprinting, bool running, bool failed)
@@ -623,10 +718,9 @@ internal sealed class SprintOverlayCuePolicy
     {
         if (!ShowEnded(sprinting, running, failed)) return 0;
         double phase = Math.Max(0, now - EndedAt) * 2 * Math.PI / 1000.0;
-        return 0.35 + 0.65 * (0.5 - 0.5 * Math.Cos(phase));
+        return 0.5 + 0.5 * Math.Cos(phase);
     }
 }
-
 internal static class ExhaustionChimeWave
 {
     internal static byte[] Create(int volume)

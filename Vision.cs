@@ -695,6 +695,14 @@ public sealed partial class InputTest
                     );
                 }
             }
+            // A refresh glow acknowledges confirmed return, not an input edge.
+            // First-ever confirmation has waitingForReturn == false.
+            if (waitingForReturn)
+            {
+                StopExhaustionSound();
+                overlayCues.ConfirmReturn(visionClock.ElapsedMilliseconds);
+                LogOverlayCue("Confirmed icon return; white refresh glow started.");
+            }
             estimatePolicy.Confirm();
             waitingForReturn = false;
             freshSprintReady = false;

@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.19";
+    private const string AppVersion = "0.2.22";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -1170,34 +1170,37 @@ public sealed partial class InputTest
                 "considers the benefit active or ended.",
                 bodyFont, boldFont);
             HelpSetting(text, "Progress bar and elapsed seconds",
-                "The bar fills against the selected Swift Start rank estimate in both " +
-                "reminder modes. Green means progressing, orange means warning, and " +
-                "steady red means confirmed icon disappearance. Reaching full scale " +
-                "alone never means the ability ended. The red bar and final elapsed " +
-                "value remain until a fresh timer starts or the session is reset. " +
-                "A dashed outline means the running time is still estimated. A capture " +
-                "error shows an empty muted bar and -- instead of declaring an end. " +
-                "Show elapsed seconds places the timer centered below the bar. " +
-                "Hiding the text removes its reserved space.",
+                "The bar fills against the selected rank estimate. Green means progressing; " +
+                "orange means advance warning. A full bar alone never declares an end. " +
+                "Input-only estimates remain hidden until icon confirmation. Early confirmed " +
+                "interruptions clear the fill without a red cue or sound. A confirmed end " +
+                "within 0.6 seconds of the rank estimate qualifies for an exhaustion cue. " +
+                "After the Debug grace period (default 300 ms), continued forward activity displays " +
+                                "the unchanged fill extent with both fill and border throbbing red. " +
+                "One optional chime is requested at the first bright pulse. " +
+                "An icon return already awaiting confirmation defers the cue. " +
+                "A new episode cancels the previous exhaustion cue. Stopping clears the " +
+                "ended fill and cancels the cue without a drain animation. Input never " +
+                "resets timing while the icon remains confirmed visible. Show elapsed " +
+                "seconds places the timer below the bar.",
                 bodyFont, boldFont);
             HelpSetting(text, "Estimate deadline and overlay fading",
-                "Each input-only estimate has nine seconds to obtain icon confirmation. " +
-                "If it expires, the estimate is cleared without an ended/red signal. " +
-                "The same continuously active input cannot restart it; become inactive " +
-                "and start again. Detection continues, so a later confirmed icon can " +
-                "still start icon-based timing. Already confirmed timing is not limited " +
-                "by this deadline. The first timer after a completed idle fade starts " +
-                "a five-second hidden period. Back-to-back activations preserve the " +
-                "visibility session. Five seconds without forward sprint activity or " +
-                "a confirmed active icon starts fade-out. Returning during fade-out " +
-                "reverses it. Fades take about a quarter second. Debug has an " +
-                "Always show bar UI override. A brief white border marks an accepted " +
-                "activation; red throbbing marks forward activity after a confirmed " +
-                "end. Stopping resets the displayed fill immediately, without a " +
-                "drain animation. Controller Toggle uses forward-stick movement " +
-                "for these presentation cues, without changing activation detection. " +
-                "The optional one-shot descending exhaustion chime has session-only " +
-                "volume, mute and preview controls in Debug.",
+                "An input-only estimate has nine seconds to obtain icon confirmation. " +
+                "On timeout it clears without an exhaustion signal; input must become " +
+                "inactive before another input estimate can start. Detection continues. " +
+                "Confirmed timing is not limited by this deadline. Initial reveal requires " +
+                "both icon confirmation and five seconds since the visibility episode began. " +
+                "Back-to-back episodes preserve that reveal-delay history, but unconfirmed " +
+                                "initial estimates remain invisible. During chaining, the already-visible " +
+                "bar shell remains visible with zero estimated fill until confirmation. " +
+                "A white glow marks confirmed return only, not first activation or input. " +
+                "Fades take about a quarter second. A qualified " +
+                "post-expiry grace/exhaustion state can keep the bar visible without an icon. " +
+                "Release, capture error, assignment, and session reset cancel exhaustion. " +
+                "Controller Toggle uses forward-stick movement for presentation activity. " +
+                "Debug provides an Always show bar UI override and session-only sound " +
+                "mute, volume, and preview controls. Cue logs record playback requests, " +
+                "not measured audible onset.",
                 bodyFont, boldFont);
             HelpSetting(text, "Position",
                 "X and Y are offsets from the selected monitor's top-left corner. " +
@@ -1353,8 +1356,28 @@ public sealed partial class InputTest
 
     private void InitializeMonitorPlacementDefaults()
     {
+        // A fresh settings file may exist without saved overlay coordinates.
+        bool hasSavedOverlayPosition = false;
+        try
+        {
+            if (System.IO.File.Exists(SettingsFile()))
+            {
+                var saved = new System.Web.Script.Serialization.JavaScriptSerializer()
+                    .Deserialize<System.Collections.Generic.Dictionary<string, object>>(
+                        System.IO.File.ReadAllText(SettingsFile()));
+                hasSavedOverlayPosition = saved != null &&
+                    saved.ContainsKey("overlay_x") && saved.ContainsKey("overlay_y");
+            }
+        }
+        catch
+        {
+            // Preserve the existing settings-warning behavior; do not replace positions
+            // when a damaged settings file cannot establish whether they were saved.
+            hasSavedOverlayPosition = true;
+        }
         committedCaptureMonitor = captureMonitor.SelectedIndex;
         monitorSelectionReady = true;
+        if (!hasSavedOverlayPosition) ApplySelectedMonitorOverlayDefaults();
 
         monitorPreviewEdges = new MonitorPreviewEdge[] {
             new MonitorPreviewEdge(), new MonitorPreviewEdge(),
