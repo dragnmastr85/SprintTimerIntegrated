@@ -434,3 +434,5 @@ FodyWeavers.xsd
 
 # Per-user runtime settings; defaults remain in source
 /settings.json
+*.bak
+*.ps1

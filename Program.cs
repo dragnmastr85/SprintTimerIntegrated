@@ -53,7 +53,7 @@ internal static class SDL
 
 public sealed partial class InputTest : Form
 {
-    private const string AppVersion = "0.2.16";
+    private const string AppVersion = "0.2.19";
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
@@ -196,6 +196,7 @@ public sealed partial class InputTest : Form
         InitializeCaptureDiagnostics();
         InitializePersistentSettings();
         InitializeDebugInterface();
+        InitializeOverlayDebugControls();
         InitializeMonitorPlacementDefaults();
         if (diagnosticLoggingEnabled) LogVision("Sprint Timer v" + AppVersion +
             " | x64 | EXE: " + Application.ExecutablePath);
@@ -1178,6 +1179,25 @@ public sealed partial class InputTest
                 "error shows an empty muted bar and -- instead of declaring an end. " +
                 "Show elapsed seconds places the timer centered below the bar. " +
                 "Hiding the text removes its reserved space.",
+                bodyFont, boldFont);
+            HelpSetting(text, "Estimate deadline and overlay fading",
+                "Each input-only estimate has nine seconds to obtain icon confirmation. " +
+                "If it expires, the estimate is cleared without an ended/red signal. " +
+                "The same continuously active input cannot restart it; become inactive " +
+                "and start again. Detection continues, so a later confirmed icon can " +
+                "still start icon-based timing. Already confirmed timing is not limited " +
+                "by this deadline. The first timer after a completed idle fade starts " +
+                "a five-second hidden period. Back-to-back activations preserve the " +
+                "visibility session. Five seconds without forward sprint activity or " +
+                "a confirmed active icon starts fade-out. Returning during fade-out " +
+                "reverses it. Fades take about a quarter second. Debug has an " +
+                "Always show bar UI override. A brief white border marks an accepted " +
+                "activation; red throbbing marks forward activity after a confirmed " +
+                "end. Stopping resets the displayed fill immediately, without a " +
+                "drain animation. Controller Toggle uses forward-stick movement " +
+                "for these presentation cues, without changing activation detection. " +
+                "The optional one-shot descending exhaustion chime has session-only " +
+                "volume, mute and preview controls in Debug.",
                 bodyFont, boldFont);
             HelpSetting(text, "Position",
                 "X and Y are offsets from the selected monitor's top-left corner. " +

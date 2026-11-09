@@ -178,6 +178,7 @@ public sealed partial class InputTest
 
     private void ResetVisionSession()
     {
+        estimatePolicy.Reset();
         ClearOverlayProgress();
         captureGeneration++;
         ClearRecoveryTracking();
@@ -200,6 +201,34 @@ public sealed partial class InputTest
 
         if (visionReady)
             if (diagnosticLoggingEnabled) LogVision("Timer session reset; waiting for initial input or icon.");
+    }
+
+    private readonly UnconfirmedEstimatePolicy estimatePolicy =
+        new UnconfirmedEstimatePolicy();
+
+    private void BeginUnconfirmedEstimate()
+    {
+        long now = visionClock.ElapsedMilliseconds;
+        estimatePolicy.Begin(now);
+        BeginOverlayEpisode(now);
+    }
+
+    private void ApplyUnconfirmedEstimateDeadline()
+    {
+        // Completed capture results are processed first by PollInput.
+        // This policy never expires an icon-confirmed running timer.
+        if (!elapsed.IsRunning || iconStable ||
+            !estimatePolicy.Expire(visionClock.ElapsedMilliseconds)) return;
+
+        double abandoned = (elapsed.Elapsed.TotalMilliseconds + elapsedCreditMs) / 1000.0;
+        elapsed.Reset();
+        elapsedCreditMs = 0;
+        freshSprintReady = false;
+        AbandonOverlayEstimate();
+        if (diagnosticLoggingEnabled) LogVision(
+            "Unconfirmed input estimate abandoned after 9.000 s without icon confirmation; " +
+            "elapsed before clear: " + abandoned.ToString("0.000") +
+            " s. Restart blocked until input becomes inactive; detection continues.");
     }
 
     private void LogVision(string text)
@@ -228,6 +257,7 @@ public sealed partial class InputTest
             return;
 
         PollInputCore(sender, e);
+        if (!active) estimatePolicy.Inactive();
 
         if (!visionReady || capturing)
             return;
@@ -235,9 +265,10 @@ public sealed partial class InputTest
         // Input cannot override a confirmed visible icon.
         if (!sessionConfirmed && !waitingForReturn)
         {
-            if (active && !previousEstimate)
+            if (active && !previousEstimate && !estimatePolicy.Blocked)
             {
                 elapsed.Restart();
+                BeginUnconfirmedEstimate();
                 if (diagnosticLoggingEnabled) LogVision("Initial pre-icon input estimate started.");
             }
             else if (!active && previousEstimate)
@@ -268,10 +299,11 @@ public sealed partial class InputTest
                     );
                 }
             }
-            else if (!previousEstimate && freshSprintReady)
+            else if (!previousEstimate && freshSprintReady && !estimatePolicy.Blocked)
             {
                 elapsedCreditMs = 0;
                 elapsed.Restart();
+                BeginUnconfirmedEstimate();
                 freshSprintReady = false;
                 if (diagnosticLoggingEnabled) LogVision(
                     "Fresh sprint after inactive input; estimated timer started."
@@ -334,6 +366,8 @@ public sealed partial class InputTest
                 }
             }
         }
+
+        ApplyUnconfirmedEstimateDeadline();
 
         // At most one capture is running. All control access stays here.
         if (captureTask == null && now >= nextCaptureAt)
@@ -609,6 +643,7 @@ public sealed partial class InputTest
 
                 if (!elapsed.IsRunning)
                 {
+                    BeginOverlayEpisode(pendingIconSince);
                     elapsed.Restart();
                     elapsedCreditMs = Math.Max(
                         0,
@@ -647,6 +682,7 @@ public sealed partial class InputTest
                 }
                 else
                 {
+                    BeginOverlayEpisode(pendingIconSince);
                     elapsed.Restart();
                     elapsedCreditMs = Math.Max(
                         0,
@@ -659,6 +695,7 @@ public sealed partial class InputTest
                     );
                 }
             }
+            estimatePolicy.Confirm();
             waitingForReturn = false;
             freshSprintReady = false;
         }
@@ -938,5 +975,23 @@ public sealed partial class InputTest
         }
 
         return best;
+    }
+}
+internal sealed class UnconfirmedEstimatePolicy
+{
+    internal const long DeadlineMs = 9000;
+    internal long StartedAt = -1;
+    internal bool Blocked;
+
+    internal void Reset() { StartedAt = -1; Blocked = false; }
+    internal void Inactive() { StartedAt = -1; Blocked = false; }
+    internal void Begin(long now) { StartedAt = now; Blocked = false; }
+    internal void Confirm() { StartedAt = -1; }
+    internal bool Expire(long now)
+    {
+        if (StartedAt < 0 || now - StartedAt < DeadlineMs) return false;
+        StartedAt = -1;
+        Blocked = true;
+        return true;
     }
 }

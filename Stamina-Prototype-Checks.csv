@@ -1,0 +1,5 @@
+case,evidence_type,expected_pair,detected_pair,minimum_coverage_score,pass,execution
+Latest supplied HUD-absent screenshot,real screenshot,False,False,0.0,True,Python reference implementation; Windows C# runner not executed
+Paired bracket geometry,synthetic fixture,True,True,1.0,True,Python reference implementation; Windows C# runner not executed
+Only left bracket,synthetic fixture,False,False,0.0,True,Python reference implementation; Windows C# runner not executed
+Vertical strokes without bracket tips,synthetic fixture,False,False,0.7375,True,Python reference implementation; Windows C# runner not executed
